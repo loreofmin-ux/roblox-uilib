@@ -14,13 +14,26 @@
 --
 --   local tab = Hub:AddTab("Main", "Game")
 --   local sec = tab:AddSection("Auto Farm", { Toggle = true, Column = 1 })
---   sec:AddButton("Select Everything", function() end)
+--   local btn = sec:AddButton("Select Everything", function() end)
 --   sec:AddToggle("Auto Cook Food", false, function(on) end)
 --   sec:AddSlider("WalkSpeed", 16, 100, 16, function(v) end)
 --   sec:AddTextbox("New restaurant name...", function(txt) end)
 --   sec:AddNote("Note: ...")
 --
 --   Hub:AutoLoad() -- à appeler en dernier : recharge la config précédente
+--
+-- Chaque élément se modifie après coup, tout argument nil restant inchangé :
+--   btn:UpdateButton("Nouveau texte")            -- garde le callback
+--   btn:UpdateButton(nil, function() end)        -- garde le texte
+--   toggle:UpdateToggle("Titre", true)
+--   slider:UpdateSlider("Vitesse", 0, 500)
+--   textbox:UpdateTextbox("Nouveau placeholder")
+--   dropdown:UpdateDropdown(nil, { "A", "B" }, "A")
+--   label:UpdateLabel("Texte")   /   note:UpdateNote("Texte")
+--
+-- Déchargement complet (interface + connexions) :
+--   Hub:OnUnload(function() ... end) -- nettoyage propre au module
+--   Hub:Unload()      -- ou sec:Unload() / tab:Unload(), même effet
 
 local HttpService = game:GetService("HttpService")
 local UserInputService = game:GetService("UserInputService")
@@ -290,6 +303,12 @@ function UILib:_Register(flag, getter, setter)
 	self.Flags[flag] = { Get = getter, Set = setter }
 end
 
+function UILib:_Unregister(flag)
+	if flag then
+		self.Flags[flag] = nil
+	end
+end
+
 function UILib:_Store()
 	return Storage.Read(self.ConfigFile) or { Configs = {}, LastUsed = nil, AutoLoad = false }
 end
@@ -391,6 +410,7 @@ function UILib.new(options, legacyTheme)
 	self.Tabs = {}
 	self.Categories = {}
 	self.Connections = {}
+	self.UnloadCallbacks = {}
 	self.ConfigFile = (options.ConfigFile or "UILib_Config") .. ".json"
 
 	local parentGui = playerGui
@@ -963,7 +983,25 @@ end
 
 --------------------------------------------------------------
 -- Éléments
+--
+-- Chaque Add* renvoie une table exposant :
+--   :Update<Type>(...)  mêmes paramètres que le Add* correspondant ; tout
+--                       argument nil laisse la valeur en place
+--   :Remove()           retire l'élément de la section
+--   .Instance           l'objet Roblox sous-jacent, si besoin d'un réglage fin
+-- Les éléments à valeur (toggle, slider, textbox, dropdown) ont en plus
+-- :Set(v) et :Get().
 --------------------------------------------------------------
+
+-- Options acceptées par tous les éléments, à la création comme à la mise à jour.
+local function applyCommonOpts(instance, opts)
+	if opts.Visible ~= nil then
+		instance.Visible = opts.Visible
+	end
+	if opts.Order ~= nil then
+		instance.LayoutOrder = opts.Order
+	end
+end
 
 function Section:AddButton(text, callback, opts)
 	opts = opts or {}
@@ -995,7 +1033,26 @@ function Section:AddButton(text, callback, opts)
 		callback()
 	end)
 
-	return button
+	applyCommonOpts(button, opts)
+
+	local api = { Instance = button }
+
+	function api:UpdateButton(newText, newCallback, newOpts)
+		if newText ~= nil then
+			button.Text = newText
+		end
+		if newCallback ~= nil then
+			callback = newCallback
+		end
+		applyCommonOpts(button, newOpts or {})
+		return api
+	end
+
+	function api:Remove()
+		button:Destroy()
+	end
+
+	return api
 end
 
 function Section:AddToggle(text, default, callback, opts)
@@ -1067,22 +1124,62 @@ function Section:AddToggle(text, default, callback, opts)
 		callback(state)
 	end)
 
-	local api = {
-		Set = function(_, v)
-			state = v and true or false
-			refresh(true)
-			callback(state)
-		end,
-		Get = function()
-			return state
-		end,
-	}
+	local function getState()
+		return state
+	end
 
-	hub:_Register(flag, api.Get, function(v)
+	local function applyState(v, animate)
 		state = v and true or false
-		refresh(false)
+		refresh(animate)
 		callback(state)
-	end)
+	end
+
+	local function register()
+		hub:_Register(flag, getState, function(v)
+			applyState(v, false)
+		end)
+	end
+	register()
+
+	applyCommonOpts(holder, opts)
+
+	local api = { Instance = holder }
+
+	function api:Set(v)
+		applyState(v, true)
+	end
+
+	function api:Get()
+		return state
+	end
+
+	function api:UpdateToggle(newText, newDefault, newCallback, newOpts)
+		newOpts = newOpts or {}
+		if newText ~= nil then
+			label.Text = newText
+		end
+		if newCallback ~= nil then
+			callback = newCallback
+		end
+		-- Le flag reste celui d'origine tant qu'on n'en demande pas un autre :
+		-- le renommage d'un élément ne doit pas invalider les configs déjà
+		-- enregistrées sous l'ancienne clé.
+		if newOpts.Flag ~= nil and newOpts.Flag ~= flag then
+			hub:_Unregister(flag)
+			flag = newOpts.Flag
+			register()
+		end
+		if newDefault ~= nil then
+			applyState(newDefault, true)
+		end
+		applyCommonOpts(holder, newOpts)
+		return api
+	end
+
+	function api:Remove()
+		hub:_Unregister(flag)
+		holder:Destroy()
+	end
 
 	return api
 end
@@ -1134,9 +1231,14 @@ function Section:AddSlider(text, min, max, default, callback, opts)
 		fill.BackgroundColor3 = theme.Accent
 	end)
 
+	-- UpdateSlider peut amener min == max ; on évite la division par zéro.
+	local function span()
+		return math.max(max - min, 1)
+	end
+
 	local function apply(v, fire)
 		value = math.clamp(math.floor(v + 0.5), min, max)
-		fill.Size = UDim2.fromScale((value - min) / (max - min), 1)
+		fill.Size = UDim2.fromScale((value - min) / span(), 1)
 		label.Text = text .. ": " .. tostring(value)
 		if fire then
 			callback(value)
@@ -1146,7 +1248,7 @@ function Section:AddSlider(text, min, max, default, callback, opts)
 	local dragging = false
 	local function setFromX(x)
 		local relative = math.clamp((x - track.AbsolutePosition.X) / math.max(track.AbsoluteSize.X, 1), 0, 1)
-		apply(min + (max - min) * relative, true)
+		apply(min + span() * relative, true)
 	end
 
 	track.InputBegan:Connect(function(input)
@@ -1166,18 +1268,59 @@ function Section:AddSlider(text, min, max, default, callback, opts)
 		end
 	end))
 
-	local api = {
-		Set = function(_, v)
-			apply(v, true)
-		end,
-		Get = function()
-			return value
-		end,
-	}
+	local function getValue()
+		return value
+	end
 
-	hub:_Register(flag, api.Get, function(v)
-		apply(tonumber(v) or min, true)
-	end)
+	local function register()
+		hub:_Register(flag, getValue, function(v)
+			apply(tonumber(v) or min, true)
+		end)
+	end
+	register()
+
+	applyCommonOpts(holder, opts)
+
+	local api = { Instance = holder }
+
+	function api:Set(v)
+		apply(v, true)
+	end
+
+	function api:Get()
+		return value
+	end
+
+	function api:UpdateSlider(newText, newMin, newMax, newDefault, newCallback, newOpts)
+		newOpts = newOpts or {}
+		if newText ~= nil then
+			text = newText
+		end
+		if newMin ~= nil then
+			min = newMin
+		end
+		if newMax ~= nil then
+			max = newMax
+		end
+		if newCallback ~= nil then
+			callback = newCallback
+		end
+		if newOpts.Flag ~= nil and newOpts.Flag ~= flag then
+			hub:_Unregister(flag)
+			flag = newOpts.Flag
+			register()
+		end
+		-- Redessine dans tous les cas : le libellé et la plage ont pu changer,
+		-- et la valeur courante peut désormais être hors bornes.
+		apply(newDefault ~= nil and newDefault or value, newDefault ~= nil)
+		applyCommonOpts(holder, newOpts)
+		return api
+	end
+
+	function api:Remove()
+		hub:_Unregister(flag)
+		holder:Destroy()
+	end
 
 	return api
 end
@@ -1210,19 +1353,65 @@ function Section:AddTextbox(placeholder, callback, opts)
 		callback(box.Text, enterPressed)
 	end)
 
-	local api = {
-		Set = function(_, v)
-			box.Text = tostring(v)
-		end,
-		Get = function()
-			return box.Text
-		end,
-	}
+	local function getText()
+		return box.Text
+	end
 
-	if opts.Save then
-		hub:_Register(flag, api.Get, function(v)
+	local saved = opts.Save and true or false
+	local function register()
+		hub:_Register(flag, getText, function(v)
 			box.Text = tostring(v)
 		end)
+	end
+	if saved then
+		register()
+	end
+
+	applyCommonOpts(box, opts)
+
+	local api = { Instance = box }
+
+	function api:Set(v)
+		box.Text = tostring(v)
+	end
+
+	function api:Get()
+		return box.Text
+	end
+
+	function api:UpdateTextbox(newPlaceholder, newCallback, newOpts)
+		newOpts = newOpts or {}
+		if newPlaceholder ~= nil then
+			box.PlaceholderText = newPlaceholder
+		end
+		if newCallback ~= nil then
+			callback = newCallback
+		end
+		if newOpts.Default ~= nil then
+			box.Text = tostring(newOpts.Default)
+		end
+		if newOpts.Flag ~= nil and newOpts.Flag ~= flag then
+			hub:_Unregister(flag)
+			flag = newOpts.Flag
+			if saved then
+				register()
+			end
+		end
+		if newOpts.Save ~= nil and (newOpts.Save and true or false) ~= saved then
+			saved = newOpts.Save and true or false
+			if saved then
+				register()
+			else
+				hub:_Unregister(flag)
+			end
+		end
+		applyCommonOpts(box, newOpts)
+		return api
+	end
+
+	function api:Remove()
+		hub:_Unregister(flag)
+		box:Destroy()
 	end
 
 	return api
@@ -1385,18 +1574,67 @@ function Section:AddDropdown(text, options, default, callback, opts)
 		select(default, false)
 	end
 
-	if opts.Save then
+	local saved = opts.Save and true or false
+	local function register()
 		hub:_Register(flag, function()
 			return selected
 		end, function(v)
 			select(v, true)
 		end)
 	end
+	if saved then
+		register()
+	end
+
+	applyCommonOpts(holder, opts)
+	api.Instance = holder
+
+	function api:UpdateDropdown(newText, newOptions, newDefault, newCallback, newOpts)
+		newOpts = newOpts or {}
+		if newText ~= nil then
+			text = newText
+		end
+		if newCallback ~= nil then
+			callback = newCallback
+		end
+		if newOptions ~= nil then
+			api:SetOptions(newOptions)
+		end
+		if newOpts.Flag ~= nil and newOpts.Flag ~= flag then
+			hub:_Unregister(flag)
+			flag = newOpts.Flag
+			if saved then
+				register()
+			end
+		end
+		if newOpts.Save ~= nil and (newOpts.Save and true or false) ~= saved then
+			saved = newOpts.Save and true or false
+			if saved then
+				register()
+			else
+				hub:_Unregister(flag)
+			end
+		end
+		if newDefault ~= nil then
+			select(newDefault, true)
+		else
+			-- Réécrit l'en-tête : le libellé a pu changer sans que la valeur bouge.
+			select(selected, false)
+		end
+		applyCommonOpts(holder, newOpts)
+		return api
+	end
+
+	function api:Remove()
+		hub:_Unregister(flag)
+		holder:Destroy()
+	end
 
 	return api
 end
 
-function Section:AddLabel(text)
+function Section:AddLabel(text, opts)
+	opts = opts or {}
 	local hub = self.Hub
 	local label = new("TextLabel", {
 		Size = UDim2.new(1, 0, 0, 18),
@@ -1411,14 +1649,36 @@ function Section:AddLabel(text)
 	hub:OnTheme(function(theme)
 		label.TextColor3 = theme.SubText
 	end)
-	return {
-		Set = function(_, v)
-			label.Text = tostring(v)
-		end,
-	}
+
+	applyCommonOpts(label, opts)
+
+	local api = { Instance = label }
+
+	function api:Set(v)
+		label.Text = tostring(v)
+	end
+
+	function api:Get()
+		return label.Text
+	end
+
+	function api:UpdateLabel(newText, newOpts)
+		if newText ~= nil then
+			label.Text = tostring(newText)
+		end
+		applyCommonOpts(label, newOpts or {})
+		return api
+	end
+
+	function api:Remove()
+		label:Destroy()
+	end
+
+	return api
 end
 
-function Section:AddNote(text)
+function Section:AddNote(text, opts)
+	opts = opts or {}
 	local hub = self.Hub
 	local label = new("TextLabel", {
 		Size = UDim2.new(1, 0, 0, 0),
@@ -1434,7 +1694,32 @@ function Section:AddNote(text)
 	hub:OnTheme(function(theme)
 		label.TextColor3 = theme.SubText
 	end)
-	return label
+
+	applyCommonOpts(label, opts)
+
+	local api = { Instance = label }
+
+	function api:Set(v)
+		label.Text = tostring(v)
+	end
+
+	function api:Get()
+		return label.Text
+	end
+
+	function api:UpdateNote(newText, newOpts)
+		if newText ~= nil then
+			label.Text = tostring(newText)
+		end
+		applyCommonOpts(label, newOpts or {})
+		return api
+	end
+
+	function api:Remove()
+		label:Destroy()
+	end
+
+	return api
 end
 
 -- Rangée de pastilles de couleur pour changer de thème.
@@ -1527,6 +1812,12 @@ function UILib:_BuildSettingsTab()
 	themeSection:AddThemePicker()
 	themeSection:AddNote("Le thème choisi est enregistré avec chaque configuration.")
 
+	local scriptSection = tab:AddSection("Script", { Column = 2 })
+	scriptSection:AddButton("Décharger le script", function()
+		self:Unload()
+	end)
+	scriptSection:AddNote("Ferme l'interface et coupe tout ce que la librairie a branché. Il faudra relancer le script pour la rouvrir.")
+
 	self._settingsTab = tab
 end
 
@@ -1536,12 +1827,64 @@ function UILib:_RefreshConfigList()
 	end
 end
 
-function UILib:Destroy()
+--------------------------------------------------------------
+-- Déchargement
+--------------------------------------------------------------
+
+-- Permet à chaque module de nettoyer ses propres effets (boucles en cours,
+-- valeurs modifiées sur le personnage...) avant que l'interface disparaisse.
+function UILib:OnUnload(fn)
+	table.insert(self.UnloadCallbacks, fn)
+	return fn
+end
+
+-- Retire l'interface et coupe tout ce que la librairie a branché.
+-- Appelable plusieurs fois sans risque.
+function UILib:Unload()
+	if self.Unloaded then
+		return
+	end
+	self.Unloaded = true
+
+	-- Le nettoyage des modules passe en premier : ils peuvent encore avoir
+	-- besoin de l'interface. Une erreur dans l'un ne doit pas bloquer les autres.
+	for _, fn in ipairs(self.UnloadCallbacks) do
+		local ok, err = pcall(fn)
+		if not ok then
+			warn("[UILib] erreur pendant le déchargement : " .. tostring(err))
+		end
+	end
+	self.UnloadCallbacks = {}
+
 	for _, conn in ipairs(self.Connections) do
 		conn:Disconnect()
 	end
 	self.Connections = {}
-	self.ScreenGui:Destroy()
+
+	self.Flags = {}
+	self.Tabs = {}
+	self.Categories = {}
+	self.Selected = nil
+
+	if self.ScreenGui then
+		self.ScreenGui:Destroy()
+		self.ScreenGui = nil
+	end
+end
+
+-- Alias : Destroy existait avant Unload.
+function UILib:Destroy()
+	self:Unload()
+end
+
+-- Déchargement accessible depuis une section ou un onglet, pour les modules
+-- qui ne gardent qu'une référence locale et pas le hub entier.
+function Section:Unload()
+	return self.Hub:Unload()
+end
+
+function Tab:Unload()
+	return self.Hub:Unload()
 end
 
 return UILib

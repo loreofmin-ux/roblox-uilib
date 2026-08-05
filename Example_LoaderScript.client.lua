@@ -120,6 +120,59 @@ esp:AddDropdown("Couleur", { "Rouge", "Vert", "Bleu" }, "Rouge", function(choice
 end, { Save = true })
 
 --==============================================================
+-- Modifier un élément après sa création
+--
+-- Chaque Add* renvoie une poignée avec un Update<Type> qui reprend les mêmes
+-- paramètres. Tout argument laissé à nil garde sa valeur actuelle.
+--==============================================================
+
+local demo = Hub:AddTab("Demo", "Game")
+local live = demo:AddSection("Mise à jour en direct", { Column = 1 })
+
+local compteur = 0
+local etiquette = live:AddLabel("Cliqué 0 fois")
+local bouton
+
+bouton = live:AddButton("Clique-moi", function()
+	compteur = compteur + 1
+	etiquette:UpdateLabel("Cliqué " .. compteur .. " fois")
+
+	if compteur == 3 then
+		-- On change le texte ET le comportement du bouton d'un coup.
+		bouton:UpdateButton("Remettre à zéro", function()
+			compteur = 0
+			etiquette:UpdateLabel("Cliqué 0 fois")
+			bouton:UpdateButton("Clique-moi")
+		end)
+	end
+end)
+
+local vitesse = live:AddSlider("Vitesse", 0, 100, 50, function(v)
+	print("vitesse:", v)
+end)
+
+live:AddButton("Élargir la plage du slider", function()
+	-- On ne touche qu'aux bornes : libellé, valeur et callback sont conservés.
+	vitesse:UpdateSlider(nil, 0, 500)
+end)
+
+--==============================================================
+-- Déchargement
+--
+-- OnUnload permet à chaque module d'arrêter ses boucles et de remettre en
+-- état ce qu'il a modifié. L'onglet UI Settings contient déjà un bouton
+-- "Décharger le script" ; Hub:Unload() fait la même chose depuis le code.
+--==============================================================
+
+Hub:OnUnload(function()
+	local h = humanoid()
+	if h then
+		h.WalkSpeed = 16
+	end
+	print("script déchargé")
+end)
+
+--==============================================================
 -- À appeler en DERNIER : recharge la config précédente si "Charger au
 -- démarrage" est activé dans l'onglet UI Settings.
 --==============================================================

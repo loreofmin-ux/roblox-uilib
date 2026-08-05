@@ -52,13 +52,63 @@ Les sections se répartissent sur deux colonnes plutôt qu'une longue liste à s
 
 ## Éléments disponibles
 
-- `AddButton(texte, callback)`
-- `AddToggle(texte, défaut, callback)`
-- `AddSlider(texte, min, max, défaut, callback)`
-- `AddTextbox(placeholder, callback)`
-- `AddDropdown(texte, options, défaut, callback)`
-- `AddLabel(texte)` / `AddNote(texte)`
+- `AddButton(texte, callback, opts)`
+- `AddToggle(texte, défaut, callback, opts)`
+- `AddSlider(texte, min, max, défaut, callback, opts)`
+- `AddTextbox(placeholder, callback, opts)`
+- `AddDropdown(texte, options, défaut, callback, opts)`
+- `AddLabel(texte, opts)` / `AddNote(texte, opts)`
 - `AddThemePicker()`
+
+`opts` accepte `Visible`, `Order`, `Flag` (clé de sauvegarde) et `Save`.
+
+## Modifier un élément après coup
+
+Chaque `Add*` renvoie une poignée dotée d'un `Update<Type>` reprenant les mêmes
+paramètres. **Tout argument laissé à `nil` conserve sa valeur actuelle**, ce qui
+permet de ne changer qu'une seule chose à la fois.
+
+```lua
+local bouton = section:AddButton("Démarrer", demarrer)
+
+bouton:UpdateButton("Arrêter")             -- texte seul, callback conservé
+bouton:UpdateButton(nil, arreter)          -- callback seul, texte conservé
+bouton:UpdateButton("Arrêter", arreter)    -- les deux
+```
+
+| Méthode | Signature |
+| --- | --- |
+| `UpdateButton` | `(texte, callback, opts)` |
+| `UpdateToggle` | `(texte, valeur, callback, opts)` |
+| `UpdateSlider` | `(texte, min, max, valeur, callback, opts)` |
+| `UpdateTextbox` | `(placeholder, callback, opts)` |
+| `UpdateDropdown` | `(texte, options, valeur, callback, opts)` |
+| `UpdateLabel` | `(texte, opts)` |
+| `UpdateNote` | `(texte, opts)` |
+
+Chaque poignée expose aussi `:Remove()` pour retirer l'élément, et `.Instance`
+pour accéder à l'objet Roblox brut. Les éléments à valeur (toggle, slider,
+textbox, dropdown) gardent `:Set(v)` et `:Get()`.
+
+Renommer un élément ne change pas sa clé de sauvegarde : les configurations déjà
+enregistrées restent valides. Pour re-cléer volontairement, passe `opts.Flag`.
+
+## Décharger la librairie
+
+```lua
+Hub:OnUnload(function()
+    -- arrêter les boucles, remettre en état ce que le module a modifié
+end)
+
+Hub:Unload()      -- ferme l'UI et coupe toutes les connexions
+section:Unload()  -- même effet depuis une section
+tab:Unload()      -- ou depuis un onglet
+```
+
+`Unload()` exécute d'abord les callbacks `OnUnload`, puis déconnecte tout ce que
+la librairie a branché et détruit le `ScreenGui`. L'appel est idempotent.
+`Destroy()` reste disponible comme alias. Un bouton **Décharger le script** est
+également présent dans l'onglet **UI Settings**.
 
 ## Thèmes
 
