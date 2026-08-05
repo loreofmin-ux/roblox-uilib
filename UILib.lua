@@ -10,6 +10,7 @@
 --       Subtitle = "Restaurant Tycoon 3 | v2.0.0",
 --       Theme = "Green",
 --       ConfigFile = "SamuraiiHub",
+--       Width = 940, Height = 580, -- optionnel, bornés à la taille de l'écran
 --   })
 --
 --   local tab = Hub:AddTab("Main", "Game")
@@ -460,7 +461,11 @@ function UILib.new(options, legacyTheme)
 	----------------------------------------------------------
 	-- Panneau
 	----------------------------------------------------------
-	local PANEL_W, PANEL_H = 760, 470
+	-- Taille du panneau, bornée à l'écran : sur une petite résolution, un
+	-- panneau plus grand que la fenêtre serait pire que des cartes serrées.
+	local viewport = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1280, 720)
+	local PANEL_W = math.min(options.Width or 940, math.max(viewport.X - 60, 480))
+	local PANEL_H = math.min(options.Height or 580, math.max(viewport.Y - 60, 320))
 	local panel = new("Frame", {
 		Name = "Panel",
 		Size = UDim2.fromOffset(PANEL_W, PANEL_H),

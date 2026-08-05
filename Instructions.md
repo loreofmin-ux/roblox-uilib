@@ -27,6 +27,8 @@ local Hub = UILib.new({
     Subtitle = "Mon Jeu | v1.0.0",
     Theme = "Green",       -- Dark | Light | Blue | Green | Yellow
     ConfigFile = "MonHub", -- fichier de sauvegarde des configs
+    Width = 940,           -- optionnel (défaut 940)
+    Height = 580,          -- optionnel (défaut 580)
 })
 
 local main = Hub:AddTab("Main", "Game")
@@ -49,6 +51,10 @@ Hub:AutoLoad() -- à appeler en dernier
 
 `Hub` → `Onglet` (rangé par catégorie dans la sidebar) → `Section` (carte).
 Les sections se répartissent sur deux colonnes plutôt qu'une longue liste à scroller.
+
+Le panneau fait 940×580 par défaut, et sa taille est bornée à celle de l'écran :
+sur une petite résolution il se réduit automatiquement au lieu de déborder.
+`Width` et `Height` permettent de l'ajuster.
 
 ## Éléments disponibles
 
