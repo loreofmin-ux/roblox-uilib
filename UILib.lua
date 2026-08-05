@@ -1427,7 +1427,12 @@ function Section:AddDropdown(text, options, default, callback, opts)
 	local hub = self.Hub
 	callback = callback or function() end
 	local flag = self:_flagFor(text, opts.Flag)
-	local selected = default
+	-- Multi = true : les options se cochent au lieu de se remplacer. La valeur
+	-- devient alors une liste, et la liste ne se referme plus à chaque clic.
+	local multi = opts.Multi and true or false
+	local selected = multi and {} or default
+	local currentOptions = {}
+	local optionViews = {}
 	local expanded = false
 
 	local holder = new("Frame", {
@@ -1456,7 +1461,7 @@ function Section:AddDropdown(text, options, default, callback, opts)
 		Size = UDim2.new(1, -34, 1, 0),
 		Position = UDim2.fromOffset(10, 0),
 		BackgroundTransparency = 1,
-		Text = text .. ": " .. tostring(selected or "—"),
+		Text = text .. ": —",
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextTruncate = Enum.TextTruncate.AtEnd,
 		Font = FONT,
@@ -1504,24 +1509,132 @@ function Section:AddDropdown(text, options, default, callback, opts)
 
 	local api = {}
 
-	local function select(option, fire)
-		selected = option
-		headerLabel.Text = text .. ": " .. tostring(option or "—")
-		if fire then
-			callback(option)
+	local function isSelected(option)
+		if multi then
+			for _, v in ipairs(selected) do
+				if v == option then
+					return true
+				end
+			end
+			return false
+		end
+		return selected == option
+	end
+
+	-- En multi, on renvoie une copie : le code appelant ne doit pas pouvoir
+	-- modifier la sélection interne par accident.
+	local function getValue()
+		if multi then
+			local out = {}
+			for i, v in ipairs(selected) do
+				out[i] = v
+			end
+			return out
+		end
+		return selected
+	end
+
+	local function refreshHeader()
+		if multi then
+			if #selected == 0 then
+				headerLabel.Text = text .. ": —"
+			else
+				local parts = {}
+				for i, v in ipairs(selected) do
+					parts[i] = tostring(v)
+				end
+				headerLabel.Text = text .. ": " .. table.concat(parts, ", ")
+			end
+		else
+			headerLabel.Text = text .. ": " .. tostring(selected or "—")
 		end
 	end
 
+	local function refreshChecks()
+		for _, view in ipairs(optionViews) do
+			if view.Check then
+				local on = isSelected(view.Option)
+				view.Check.BackgroundColor3 = on and hub.Theme.Accent or hub.Theme.ElementHover
+				view.Mark.Visible = on
+			end
+		end
+	end
+
+	local function refreshOptionStyles()
+		local theme = hub.Theme
+		for _, view in ipairs(optionViews) do
+			if view.Label then
+				view.Label.TextColor3 = theme.Text
+			else
+				view.Button.TextColor3 = theme.Text
+			end
+			if view.Mark then
+				view.Mark.TextColor3 = theme.AccentText
+			end
+		end
+	end
+
+	-- Un seul écouteur de thème pour toutes les options : SetOptions peut être
+	-- rappelé souvent, et en enregistrer un par ligne les accumulerait sans fin.
+	hub:OnTheme(function()
+		refreshOptionStyles()
+		refreshChecks()
+	end)
+
+	local function select(value, fire)
+		if multi then
+			local out = {}
+			if type(value) == "table" then
+				for _, v in ipairs(value) do
+					table.insert(out, v)
+				end
+			elseif value ~= nil then
+				table.insert(out, value)
+			end
+			selected = out
+		else
+			selected = value
+		end
+		refreshHeader()
+		refreshChecks()
+		if fire then
+			callback(getValue())
+		end
+	end
+
+	local function toggleOption(option)
+		local index
+		for i, v in ipairs(selected) do
+			if v == option then
+				index = i
+				break
+			end
+		end
+		if index then
+			table.remove(selected, index)
+		else
+			table.insert(selected, option)
+		end
+		refreshHeader()
+		refreshChecks()
+		callback(getValue())
+	end
+
 	function api:SetOptions(newOptions)
+		newOptions = newOptions or {}
+		currentOptions = newOptions
+		optionViews = {}
+
 		for _, child in ipairs(list:GetChildren()) do
 			if child:IsA("TextButton") then
 				child:Destroy()
 			end
 		end
+
 		for i, option in ipairs(newOptions) do
 			local optBtn = new("TextButton", {
 				Size = UDim2.new(1, 0, 0, 26),
-				Text = tostring(option),
+				Text = multi and "" or tostring(option),
 				Font = FONT,
 				TextSize = 12,
 				AutoButtonColor = false,
@@ -1530,9 +1643,46 @@ function Section:AddDropdown(text, options, default, callback, opts)
 				Parent = list,
 			})
 			corner(optBtn, 4)
-			hub:OnTheme(function(theme)
-				optBtn.TextColor3 = theme.Text
-			end)
+
+			local view = { Option = option, Button = optBtn }
+
+			if multi then
+				-- Case à cocher à gauche, libellé aligné à sa droite.
+				local box = new("Frame", {
+					Size = UDim2.fromOffset(14, 14),
+					Position = UDim2.new(0, 6, 0.5, -7),
+					BorderSizePixel = 0,
+					Parent = optBtn,
+				})
+				corner(box, 4)
+
+				local mark = new("TextLabel", {
+					Size = UDim2.fromScale(1, 1),
+					BackgroundTransparency = 1,
+					Text = "✓",
+					TextSize = 11,
+					Font = FONT_BOLD,
+					Visible = false,
+					Parent = box,
+				})
+
+				local optLabel = new("TextLabel", {
+					Size = UDim2.new(1, -30, 1, 0),
+					Position = UDim2.fromOffset(26, 0),
+					BackgroundTransparency = 1,
+					Text = tostring(option),
+					TextXAlignment = Enum.TextXAlignment.Left,
+					TextTruncate = Enum.TextTruncate.AtEnd,
+					Font = FONT,
+					TextSize = 12,
+					Parent = optBtn,
+				})
+
+				view.Check = box
+				view.Mark = mark
+				view.Label = optLabel
+			end
+
 			optBtn.MouseEnter:Connect(function()
 				optBtn.BackgroundTransparency = 0
 				optBtn.BackgroundColor3 = hub.Theme.ElementHover
@@ -1541,22 +1691,50 @@ function Section:AddDropdown(text, options, default, callback, opts)
 				optBtn.BackgroundTransparency = 1
 			end)
 			optBtn.MouseButton1Click:Connect(function()
-				select(option, true)
-				expanded = false
-				list.Visible = false
-				arrow.Text = "▾"
+				if multi then
+					-- La liste reste ouverte : on coche souvent plusieurs options
+					-- d'affilée.
+					toggleOption(option)
+				else
+					select(option, true)
+					expanded = false
+					list.Visible = false
+					arrow.Text = "▾"
+				end
 			end)
+
+			table.insert(optionViews, view)
 		end
-		-- La sélection courante peut avoir disparu de la nouvelle liste.
-		local stillThere = false
-		for _, option in ipairs(newOptions) do
-			if option == selected then
-				stillThere = true
-				break
+
+		refreshOptionStyles()
+
+		if multi then
+			-- On retire les sélections absentes de la nouvelle liste, sans rien
+			-- cocher d'office.
+			local kept = {}
+			for _, v in ipairs(selected) do
+				for _, option in ipairs(newOptions) do
+					if option == v then
+						table.insert(kept, v)
+						break
+					end
+				end
 			end
-		end
-		if not stillThere then
-			select(newOptions[1], false)
+			selected = kept
+			refreshHeader()
+			refreshChecks()
+		else
+			-- La sélection courante peut avoir disparu de la nouvelle liste.
+			local stillThere = false
+			for _, option in ipairs(newOptions) do
+				if option == selected then
+					stillThere = true
+					break
+				end
+			end
+			if not stillThere then
+				select(newOptions[1], false)
+			end
 		end
 	end
 
@@ -1565,7 +1743,12 @@ function Section:AddDropdown(text, options, default, callback, opts)
 	end
 
 	function api:Get()
-		return selected
+		return getValue()
+	end
+
+	-- Pratique en multi : savoir si une option précise est cochée.
+	function api:IsSelected(option)
+		return isSelected(option)
 	end
 
 	header.MouseButton1Click:Connect(function()
@@ -1581,9 +1764,7 @@ function Section:AddDropdown(text, options, default, callback, opts)
 
 	local saved = opts.Save and true or false
 	local function register()
-		hub:_Register(flag, function()
-			return selected
-		end, function(v)
+		hub:_Register(flag, getValue, function(v)
 			select(v, true)
 		end)
 	end
@@ -1602,7 +1783,13 @@ function Section:AddDropdown(text, options, default, callback, opts)
 		if newCallback ~= nil then
 			callback = newCallback
 		end
-		if newOptions ~= nil then
+		-- Basculer entre choix unique et multiple change la forme de la valeur,
+		-- donc on repart d'une sélection vide et on reconstruit les lignes.
+		if newOpts.Multi ~= nil and (newOpts.Multi and true or false) ~= multi then
+			multi = newOpts.Multi and true or false
+			selected = multi and {} or nil
+			api:SetOptions(newOptions or currentOptions)
+		elseif newOptions ~= nil then
 			api:SetOptions(newOptions)
 		end
 		if newOpts.Flag ~= nil and newOpts.Flag ~= flag then
@@ -1624,7 +1811,7 @@ function Section:AddDropdown(text, options, default, callback, opts)
 			select(newDefault, true)
 		else
 			-- Réécrit l'en-tête : le libellé a pu changer sans que la valeur bouge.
-			select(selected, false)
+			select(getValue(), false)
 		end
 		applyCommonOpts(holder, newOpts)
 		return api

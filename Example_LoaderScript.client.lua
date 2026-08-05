@@ -119,6 +119,24 @@ esp:AddDropdown("Couleur", { "Rouge", "Vert", "Bleu" }, "Rouge", function(choice
 	print("couleur ESP:", choice)
 end, { Save = true })
 
+-- Multi = true : les options se cochent, la valeur devient une table.
+local cibles = esp:AddDropdown("Cibles",
+	{ "Joueurs", "Véhicules", "Caisses", "Bâtiments" },
+	{ "Joueurs" },
+	function(choix)
+		print("cibles ESP:", table.concat(choix, ", "))
+	end,
+	{ Multi = true, Save = true })
+
+esp:AddButton("Afficher les cibles cochées", function()
+	local choix = cibles:Get()
+	if #choix == 0 then
+		print("aucune cible")
+	else
+		print(table.concat(choix, ", "))
+	end
+end)
+
 --==============================================================
 -- Modifier un élément après sa création
 --

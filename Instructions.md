@@ -67,6 +67,32 @@ sur une petite résolution il se réduit automatiquement au lieu de déborder.
 - `AddThemePicker()`
 
 `opts` accepte `Visible`, `Order`, `Flag` (clé de sauvegarde) et `Save`.
+`AddDropdown` accepte en plus `Multi`.
+
+### Dropdown à choix multiple
+
+Avec `Multi = true`, les options se cochent au lieu de se remplacer, et la liste
+reste ouverte pour en cocher plusieurs d'affilée.
+
+```lua
+local cibles = section:AddDropdown("Cibles",
+    { "Joueurs", "Véhicules", "Caisses" },
+    { "Joueurs" },              -- valeur par défaut : une liste
+    function(choix)
+        -- choix est une table : { "Joueurs", "Caisses" }
+        print(table.concat(choix, ", "))
+    end,
+    { Multi = true, Save = true })
+
+cibles:Get()                    -- { "Joueurs", "Caisses" }
+cibles:Set({ "Véhicules" })     -- remplace toute la sélection
+cibles:IsSelected("Caisses")    -- true / false
+```
+
+En mode `Multi`, la valeur est **toujours une table**, y compris quand rien n'est
+coché (table vide). `Get()` renvoie une copie : la modifier ne touche pas à la
+sélection interne. Si `SetOptions` retire une option qui était cochée, elle
+disparaît simplement de la sélection, sans qu'une autre soit cochée à sa place.
 
 ## Modifier un élément après coup
 
@@ -88,7 +114,7 @@ bouton:UpdateButton("Arrêter", arreter)    -- les deux
 | `UpdateToggle` | `(texte, valeur, callback, opts)` |
 | `UpdateSlider` | `(texte, min, max, valeur, callback, opts)` |
 | `UpdateTextbox` | `(placeholder, callback, opts)` |
-| `UpdateDropdown` | `(texte, options, valeur, callback, opts)` |
+| `UpdateDropdown` | `(texte, options, valeur, callback, opts)` — `opts.Multi` bascule entre choix unique et multiple |
 | `UpdateLabel` | `(texte, opts)` |
 | `UpdateNote` | `(texte, opts)` |
 
