@@ -187,7 +187,10 @@ local function stroke(parent, color, thickness)
 	})
 end
 
-local function makeDraggable(handle, target)
+-- connections : table où déposer les connexions globales, pour que Destroy()
+-- puisse les couper (contrairement aux signaux d'instance, elles survivent à
+-- la destruction du ScreenGui).
+local function makeDraggable(handle, target, connections)
 	local dragging = false
 	local dragStart, startPos
 	local moved = false
@@ -198,17 +201,18 @@ local function makeDraggable(handle, target)
 			moved = false
 			dragStart = input.Position
 			startPos = target.Position
-
-			input.Changed:Connect(function()
-				if input.UserInputState == Enum.UserInputState.End then
-					dragging = false
-				end
-			end)
 		end
 	end)
 
-	handle.InputChanged:Connect(function(input)
-		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+	-- Le suivi passe par UserInputService plutôt que par handle.InputChanged :
+	-- ce dernier ne se déclenche que sous le curseur, donc un mouvement rapide
+	-- qui sort de la poignée interrompait le déplacement en plein glisser.
+	local movedConn = UserInputService.InputChanged:Connect(function(input)
+		if not dragging then
+			return
+		end
+		if input.UserInputType == Enum.UserInputType.MouseMovement
+			or input.UserInputType == Enum.UserInputType.Touch then
 			local delta = input.Position - dragStart
 			if delta.Magnitude > 3 then
 				moved = true
@@ -219,6 +223,18 @@ local function makeDraggable(handle, target)
 			)
 		end
 	end)
+
+	-- Idem au relâchement : le bouton peut très bien être lâché hors de la poignée.
+	local endedConn = UserInputService.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = false
+		end
+	end)
+
+	if connections then
+		table.insert(connections, movedConn)
+		table.insert(connections, endedConn)
+	end
 
 	return function()
 		return moved
@@ -374,6 +390,7 @@ function UILib.new(options, legacyTheme)
 	self.Flags = {}
 	self.Tabs = {}
 	self.Categories = {}
+	self.Connections = {}
 	self.ConfigFile = (options.ConfigFile or "UILib_Config") .. ".json"
 
 	local parentGui = playerGui
@@ -554,7 +571,7 @@ function UILib.new(options, legacyTheme)
 	----------------------------------------------------------
 	-- Interactions fenêtre
 	----------------------------------------------------------
-	local isDragged = makeDraggable(hubIcon, hubIcon)
+	local isDragged = makeDraggable(hubIcon, hubIcon, self.Connections)
 	hubIcon.InputEnded:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 			if not isDragged() then
@@ -562,7 +579,7 @@ function UILib.new(options, legacyTheme)
 			end
 		end
 	end)
-	makeDraggable(topBar, panel)
+	makeDraggable(topBar, panel, self.Connections)
 
 	closeBtn.MouseButton1Click:Connect(function()
 		panel.Visible = false
@@ -1138,16 +1155,16 @@ function Section:AddSlider(text, min, max, default, callback, opts)
 			setFromX(input.Position.X)
 		end
 	end)
-	UserInputService.InputChanged:Connect(function(input)
+	table.insert(hub.Connections, UserInputService.InputChanged:Connect(function(input)
 		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
 			setFromX(input.Position.X)
 		end
-	end)
-	UserInputService.InputEnded:Connect(function(input)
+	end))
+	table.insert(hub.Connections, UserInputService.InputEnded:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 			dragging = false
 		end
-	end)
+	end))
 
 	local api = {
 		Set = function(_, v)
@@ -1520,6 +1537,10 @@ function UILib:_RefreshConfigList()
 end
 
 function UILib:Destroy()
+	for _, conn in ipairs(self.Connections) do
+		conn:Disconnect()
+	end
+	self.Connections = {}
 	self.ScreenGui:Destroy()
 end
 
