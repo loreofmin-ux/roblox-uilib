@@ -69,6 +69,45 @@ sur une petite résolution il se réduit automatiquement au lieu de déborder.
 `opts` accepte `Visible`, `Order`, `Flag` (clé de sauvegarde) et `Save`.
 `AddDropdown` accepte en plus `Multi`.
 
+### Dropdown avec dictionnaire
+
+`AddDropdown` accepte une liste ou un dictionnaire. Avec un dictionnaire, les
+**clés servent de libellés** et la **valeur associée est passée en second
+argument** du callback :
+
+```lua
+local destinations = {
+    Spawn = Vector3.new(0, 5, 0),
+    Boss  = Vector3.new(100, 5, 200),
+}
+
+section:AddDropdown("Destination", destinations, "Spawn", function(cle, valeur)
+    -- cle = "Boss", valeur = Vector3.new(100, 5, 200)
+    character:PivotTo(CFrame.new(valeur))
+end, { Save = true })
+```
+
+| Appel | Renvoie |
+| --- | --- |
+| `:Get()` | la **clé** (`"Boss"`) |
+| `:GetValue()` | la **valeur** (`Vector3`) |
+| `:Set("Boss")` | se règle par la clé |
+
+Le premier argument du callback est toujours le libellé, exactement comme avec
+une liste : le code écrit pour une liste continue donc de fonctionner tel quel.
+Sur une liste, `GetValue()` renvoie la même chose que `Get()`.
+
+Deux points à connaître :
+
+- **Les clés d'un dictionnaire sont triées par ordre alphabétique.** En Lua,
+  `pairs` ne garantit aucun ordre : sans tri, la liste changerait d'ordre d'une
+  exécution à l'autre. Si tu as besoin d'un ordre précis, utilise une liste.
+- **C'est la clé qui est enregistrée dans les configurations**, pas la valeur.
+  Une valeur comme un `Vector3` ou une fonction ne serait pas sérialisable.
+
+Dictionnaire et `Multi` se combinent : le callback reçoit alors une table de
+clés et une table de valeurs.
+
 ### Dropdown à choix multiple
 
 Avec `Multi = true`, les options se cochent au lieu de se remplacer, et la liste

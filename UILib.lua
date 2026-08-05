@@ -998,6 +998,41 @@ end
 -- :Set(v) et :Get().
 --------------------------------------------------------------
 
+-- Accepte une liste { "A", "B" } ou un dictionnaire { A = 1, B = 2 }.
+-- Renvoie les libellés dans l'ordre d'affichage, et la table de correspondance
+-- libellé -> valeur (nil pour une liste, où le libellé est la valeur).
+-- Les clés d'un dictionnaire sont triées : pairs ne garantit aucun ordre, donc
+-- sans tri la liste changerait d'ordre d'une exécution à l'autre.
+local function normalizeOptions(source)
+	local keys = {}
+	if type(source) ~= "table" then
+		return keys, nil
+	end
+
+	local count = 0
+	for _ in pairs(source) do
+		count = count + 1
+	end
+
+	if count == #source then
+		-- Liste : on conserve l'ordre d'écriture.
+		for i, v in ipairs(source) do
+			keys[i] = v
+		end
+		return keys, nil
+	end
+
+	local map = {}
+	for k, v in pairs(source) do
+		table.insert(keys, k)
+		map[k] = v
+	end
+	table.sort(keys, function(a, b)
+		return tostring(a) < tostring(b)
+	end)
+	return keys, map
+end
+
 -- Options acceptées par tous les éléments, à la création comme à la mise à jour.
 local function applyCommonOpts(instance, opts)
 	if opts.Visible ~= nil then
@@ -1431,7 +1466,9 @@ function Section:AddDropdown(text, options, default, callback, opts)
 	-- devient alors une liste, et la liste ne se referme plus à chaque clic.
 	local multi = opts.Multi and true or false
 	local selected = multi and {} or default
-	local currentOptions = {}
+	local rawOptions = options or {}
+	local optionKeys = {}
+	local optionMap = nil
 	local optionViews = {}
 	local expanded = false
 
@@ -1534,6 +1571,34 @@ function Section:AddDropdown(text, options, default, callback, opts)
 		return selected
 	end
 
+	-- Valeur associée à un libellé. Pour une liste, le libellé est la valeur.
+	local function valueFor(key)
+		if key == nil then
+			return nil
+		end
+		if optionMap then
+			return optionMap[key]
+		end
+		return key
+	end
+
+	local function getMapped()
+		if multi then
+			local out = {}
+			for i, key in ipairs(selected) do
+				out[i] = valueFor(key)
+			end
+			return out
+		end
+		return valueFor(selected)
+	end
+
+	-- Le callback reçoit toujours le libellé en premier — identique au
+	-- comportement d'une liste — et la valeur du dictionnaire en second.
+	local function fireCallback()
+		callback(getValue(), getMapped())
+	end
+
 	local function refreshHeader()
 		if multi then
 			if #selected == 0 then
@@ -1598,7 +1663,7 @@ function Section:AddDropdown(text, options, default, callback, opts)
 		refreshHeader()
 		refreshChecks()
 		if fire then
-			callback(getValue())
+			fireCallback()
 		end
 	end
 
@@ -1617,12 +1682,12 @@ function Section:AddDropdown(text, options, default, callback, opts)
 		end
 		refreshHeader()
 		refreshChecks()
-		callback(getValue())
+		fireCallback()
 	end
 
 	function api:SetOptions(newOptions)
-		newOptions = newOptions or {}
-		currentOptions = newOptions
+		rawOptions = newOptions or {}
+		optionKeys, optionMap = normalizeOptions(rawOptions)
 		optionViews = {}
 
 		for _, child in ipairs(list:GetChildren()) do
@@ -1631,7 +1696,7 @@ function Section:AddDropdown(text, options, default, callback, opts)
 			end
 		end
 
-		for i, option in ipairs(newOptions) do
+		for i, option in ipairs(optionKeys) do
 			local optBtn = new("TextButton", {
 				Size = UDim2.new(1, 0, 0, 26),
 				Text = multi and "" or tostring(option),
@@ -1713,7 +1778,7 @@ function Section:AddDropdown(text, options, default, callback, opts)
 			-- cocher d'office.
 			local kept = {}
 			for _, v in ipairs(selected) do
-				for _, option in ipairs(newOptions) do
+				for _, option in ipairs(optionKeys) do
 					if option == v then
 						table.insert(kept, v)
 						break
@@ -1726,14 +1791,14 @@ function Section:AddDropdown(text, options, default, callback, opts)
 		else
 			-- La sélection courante peut avoir disparu de la nouvelle liste.
 			local stillThere = false
-			for _, option in ipairs(newOptions) do
+			for _, option in ipairs(optionKeys) do
 				if option == selected then
 					stillThere = true
 					break
 				end
 			end
 			if not stillThere then
-				select(newOptions[1], false)
+				select(optionKeys[1], false)
 			end
 		end
 	end
@@ -1744,6 +1809,12 @@ function Section:AddDropdown(text, options, default, callback, opts)
 
 	function api:Get()
 		return getValue()
+	end
+
+	-- Valeur du dictionnaire correspondant à la sélection. Sur une liste
+	-- classique, renvoie la même chose que Get().
+	function api:GetValue()
+		return getMapped()
 	end
 
 	-- Pratique en multi : savoir si une option précise est cochée.
@@ -1788,7 +1859,7 @@ function Section:AddDropdown(text, options, default, callback, opts)
 		if newOpts.Multi ~= nil and (newOpts.Multi and true or false) ~= multi then
 			multi = newOpts.Multi and true or false
 			selected = multi and {} or nil
-			api:SetOptions(newOptions or currentOptions)
+			api:SetOptions(newOptions or rawOptions)
 		elseif newOptions ~= nil then
 			api:SetOptions(newOptions)
 		end

@@ -137,6 +137,20 @@ esp:AddButton("Afficher les cibles cochées", function()
 	end
 end)
 
+-- Dictionnaire : les clés s'affichent, la valeur arrive en second argument.
+local tp = visuals:AddSection("Téléportation", { Column = 2 })
+tp:AddDropdown("Destination", {
+	Spawn = Vector3.new(0, 5, 0),
+	Boss = Vector3.new(100, 5, 200),
+	Base = Vector3.new(-40, 12, 75),
+}, "Spawn", function(nom, position)
+	local char = Players.LocalPlayer.Character
+	if char then
+		char:PivotTo(CFrame.new(position))
+	end
+	print("téléporté vers", nom)
+end, { Save = true })
+
 --==============================================================
 -- Modifier un élément après sa création
 --
