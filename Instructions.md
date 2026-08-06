@@ -206,8 +206,29 @@ la librairie a branché et détruit le `ScreenGui`. L'appel est idempotent.
 
 ## Thèmes
 
-Cinq thèmes intégrés : `Dark`, `Light`, `Blue`, `Green`, `Yellow`.
+Six thèmes intégrés : `Dark`, `Light`, `Blue`, `Green`, `Yellow`, `RGB`.
 Changeables via `Hub:SetTheme(nom)` ou depuis l'onglet **Réglages → Interface**.
+
+### Le thème RGB
+
+Un voile dégradé arc-en-ciel traverse la diagonale du panneau et défile
+lentement (un cycle toutes les 9 secondes). Le rond flottant suit le même
+dégradé.
+
+Il est superposé plutôt que calculé : recolorer chaque élément à chaque image
+signifierait rejouer des centaines d'écouteurs de thème par seconde. Ici, deux
+`UIGradient` sont mis à jour, et la boucle par image n'est branchée que tant que
+le thème RGB est actif. `Animations = false` la désactive aussi.
+
+## Champs de texte
+
+Un champ resté actif capte le clavier — la touche Maj s'y écrit au lieu de
+déclencher le shift lock. Le focus est donc relâché automatiquement après
+**10 secondes sans frappe**, délai remis à zéro à chaque caractère.
+
+```lua
+section:AddTextbox("Nom...", callback, { UnfocusAfter = 5 })
+```
 
 ## Transparence
 
@@ -249,6 +270,8 @@ pas `☰ ✕ ▾ ✓` et les remplacerait par des carrés vides.
 
 | Version | Changement |
 | --- | --- |
+| 2.6.0 | Thème RGB animé, relâchement automatique du focus des champs de texte |
+| 2.5.1 | La bulle d'aide bascule à gauche du rond quand il est sur la moitié droite |
 | 2.5.0 | Entrée en cascade à l'ouverture du panneau |
 | 2.4.0 | Fondu à l'ouverture, dropdowns animés, transparence par pas de 5 % |
 | 2.3.0 | Icônes dessinées, transparence globale, animations, langue FR/EN |

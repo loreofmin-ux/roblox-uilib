@@ -41,6 +41,7 @@
 local HttpService = game:GetService("HttpService")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
 
 local player = Players.LocalPlayer
@@ -118,9 +119,39 @@ local THEMES = {
 		Text = Color3.fromRGB(245, 240, 226),
 		SubText = Color3.fromRGB(160, 145, 100),
 	},
+	-- Base neutre : le mouvement de couleur vient du dégradé superposé, pas de
+	-- la palette elle-même.
+	RGB = {
+		Background = Color3.fromRGB(12, 12, 16),
+		Sidebar = Color3.fromRGB(16, 16, 21),
+		Card = Color3.fromRGB(22, 22, 28),
+		Element = Color3.fromRGB(33, 33, 41),
+		ElementHover = Color3.fromRGB(46, 46, 57),
+		Stroke = Color3.fromRGB(38, 38, 48),
+		Accent = Color3.fromRGB(190, 110, 245),
+		AccentText = Color3.fromRGB(255, 255, 255),
+		Text = Color3.fromRGB(236, 236, 243),
+		SubText = Color3.fromRGB(140, 140, 156),
+		Swatch = Color3.fromRGB(255, 255, 255),
+		Rainbow = true,
+	},
 }
 
-local THEME_ORDER = { "Dark", "Light", "Blue", "Green", "Yellow" }
+local THEME_ORDER = { "Dark", "Light", "Blue", "Green", "Yellow", "RGB" }
+
+-- Dégradé du thème RGB, réutilisé par le panneau, le rond et la pastille.
+local RAINBOW = ColorSequence.new({
+	ColorSequenceKeypoint.new(0.00, Color3.fromRGB(255, 64, 64)),
+	ColorSequenceKeypoint.new(0.17, Color3.fromRGB(255, 200, 64)),
+	ColorSequenceKeypoint.new(0.34, Color3.fromRGB(80, 230, 120)),
+	ColorSequenceKeypoint.new(0.50, Color3.fromRGB(64, 220, 230)),
+	ColorSequenceKeypoint.new(0.67, Color3.fromRGB(90, 130, 255)),
+	ColorSequenceKeypoint.new(0.84, Color3.fromRGB(210, 90, 255)),
+	ColorSequenceKeypoint.new(1.00, Color3.fromRGB(255, 64, 64)),
+})
+
+-- Durée d'un cycle complet du dégradé, en secondes.
+local RGB_PERIOD = 9
 
 --==============================================================
 -- Traductions
@@ -414,7 +445,7 @@ end
 
 local UILib = {}
 UILib.__index = UILib
-UILib.Version = "2.5.0"
+UILib.Version = "2.6.0"
 UILib.Themes = THEMES
 UILib.ThemeOrder = THEME_ORDER
 
@@ -709,6 +740,61 @@ function UILib.new(options, legacyTheme)
 	end)
 	self.Panel = panel
 
+	----------------------------------------------------------
+	-- Thème RGB : voile dégradé animé
+	--
+	-- Recalculer toutes les couleurs à chaque image coûterait cher (des
+	-- centaines d'écouteurs de thème). On superpose donc un voile dégradé :
+	-- deux instances à faire évoluer, et rien à recalculer ailleurs.
+	----------------------------------------------------------
+	local rgbLayer = new("Frame", {
+		Name = "RGBLayer",
+		Size = UDim2.fromScale(1, 1),
+		BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+		BackgroundTransparency = 0.8,
+		BorderSizePixel = 0,
+		ZIndex = 0,
+		Visible = false,
+		Parent = panel,
+	})
+	corner(rgbLayer, 10)
+	local rgbGradient = new("UIGradient", {
+		Color = RAINBOW,
+		Rotation = 45, -- la diagonale
+		Parent = rgbLayer,
+	})
+
+	local hubGradient = new("UIGradient", {
+		Color = RAINBOW,
+		Rotation = 45,
+		Enabled = false,
+		Parent = hubIcon,
+	})
+
+	local rgbConn
+	local function setRainbowActive(active)
+		rgbLayer.Visible = active
+		hubGradient.Enabled = active
+
+		if active and not rgbConn then
+			rgbConn = RunService.RenderStepped:Connect(function()
+				local phase = (os.clock() % RGB_PERIOD) / RGB_PERIOD
+				local offset = Vector2.new(phase * 2 - 1, 0)
+				rgbGradient.Offset = offset
+				hubGradient.Offset = offset
+			end)
+			table.insert(self.Connections, rgbConn)
+		elseif not active and rgbConn then
+			-- Rien à animer hors du thème RGB : on libère la boucle par image.
+			rgbConn:Disconnect()
+			rgbConn = nil
+		end
+	end
+
+	self:OnTheme(function(theme)
+		setRainbowActive(theme.Rainbow == true and self.Animations)
+	end)
+
 	-- Barre du haut
 	local topBar = new("Frame", {
 		Name = "TopBar",
@@ -917,23 +1003,50 @@ function UILib.new(options, legacyTheme)
 	-- Une fois le panneau fermé par la croix, rien n'indique que c'est le rond
 	-- flottant qui le rouvre. On le signale par des ondes et une bulle d'aide.
 	----------------------------------------------------------
+	-- Largeur automatique : la bulle s'ajuste au texte, qui change avec la langue.
 	local hint = new("Frame", {
 		Name = "HubHint",
 		AnchorPoint = Vector2.new(0, 0.5),
 		Position = UDim2.new(1, 10, 0.5, 0),
-		Size = UDim2.fromOffset(150, 26),
+		Size = UDim2.fromOffset(0, 26),
+		AutomaticSize = Enum.AutomaticSize.X,
 		Visible = false,
 		Parent = hubIcon,
 	})
 	corner(hint, 6)
+	new("UIPadding", {
+		PaddingLeft = UDim.new(0, 10),
+		PaddingRight = UDim.new(0, 10),
+		Parent = hint,
+	})
 
 	local hintLabel = new("TextLabel", {
-		Size = UDim2.fromScale(1, 1),
+		Size = UDim2.fromOffset(0, 26),
+		AutomaticSize = Enum.AutomaticSize.X,
 		BackgroundTransparency = 1,
 		Font = FONT,
 		TextSize = 12,
 		Parent = hint,
 	})
+
+	-- Le rond est déplaçable : posé près du bord droit, une bulle ancrée à sa
+	-- droite sortirait de l'écran. On la bascule donc du côté où il y a la place.
+	local function positionHint()
+		local available = screenGui.AbsoluteSize.X
+		if available <= 0 then
+			local camera = workspace.CurrentCamera
+			available = camera and camera.ViewportSize.X or 1280
+		end
+
+		local hubCenterX = hubIcon.AbsolutePosition.X + hubIcon.AbsoluteSize.X / 2
+		if hubCenterX > available / 2 then
+			hint.AnchorPoint = Vector2.new(1, 0.5)
+			hint.Position = UDim2.new(0, -10, 0.5, 0)
+		else
+			hint.AnchorPoint = Vector2.new(0, 0.5)
+			hint.Position = UDim2.new(1, 10, 0.5, 0)
+		end
+	end
 	self:OnLanguage(function()
 		hintLabel.Text = self:T("ReopenHint")
 	end)
@@ -977,6 +1090,8 @@ function UILib.new(options, legacyTheme)
 		hintToken = hintToken + 1
 		local token = hintToken
 
+		-- Recalculé à chaque affichage : le rond a pu être déplacé entre-temps.
+		positionHint()
 		hint.Visible = true
 		hint.BackgroundTransparency = 1
 		hintLabel.TextTransparency = 1
@@ -1869,7 +1984,32 @@ function Section:AddTextbox(placeholder, callback, opts)
 		box.PlaceholderColor3 = theme.SubText
 	end)
 
+	-- Un champ resté actif capte le clavier : la touche Maj s'écrit dedans au
+	-- lieu de déclencher le shift lock. On relâche donc le focus après un délai
+	-- sans frappe, remis à zéro à chaque caractère saisi.
+	local UNFOCUS_AFTER = opts.UnfocusAfter or 10
+	local focusToken = 0
+
+	local function scheduleUnfocus()
+		focusToken = focusToken + 1
+		local token = focusToken
+		task.delay(UNFOCUS_AFTER, function()
+			if token == focusToken and box.Parent and box:IsFocused() then
+				box:ReleaseFocus()
+			end
+		end)
+	end
+
+	box.Focused:Connect(scheduleUnfocus)
+	box:GetPropertyChangedSignal("Text"):Connect(function()
+		if box:IsFocused() then
+			scheduleUnfocus()
+		end
+	end)
+
 	box.FocusLost:Connect(function(enterPressed)
+		-- Invalide le compte à rebours en cours.
+		focusToken = focusToken + 1
 		callback(box.Text, enterPressed)
 	end)
 
@@ -2532,6 +2672,10 @@ function Section:AddThemePicker()
 			Parent = row,
 		})
 		corner(swatch, 15)
+		-- La pastille RGB montre le dégradé lui-même, pas une couleur unie.
+		if THEMES[name].Rainbow then
+			new("UIGradient", { Color = RAINBOW, Rotation = 45, Parent = swatch })
+		end
 		-- Contour permanent : sans lui, la pastille noire disparaîtrait sur un
 		-- thème sombre et la blanche sur un thème clair.
 		strokes[name] = stroke(swatch, nil, 1)
