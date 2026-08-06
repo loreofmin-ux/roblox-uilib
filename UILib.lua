@@ -168,22 +168,32 @@ local THEME_ORDER = { "Dark", "Light", "Blue", "Green", "Yellow", "RGB", "RGBFon
 -- On fait donc tourner les teintes elles-mêmes : chaque étape est un dégradé
 -- complet décalé sur la roue chromatique, et la boucle se referme sans rupture.
 local RAINBOW_STEPS = 180
-local RAINBOW_FRAMES = {}
-do
+
+-- span : portion de la roue chromatique couverte par un dégradé.
+local function buildFrames(span, saturation)
+	local frames = {}
 	local KEYPOINTS = 7
-	-- 0,85 tour plutôt qu'un tour complet : les deux extrémités du dégradé ne
-	-- retombent pas sur la même teinte, ce qui évite un aplat de couleur.
-	local SPAN = 0.85
 	for step = 0, RAINBOW_STEPS - 1 do
 		local shift = step / RAINBOW_STEPS
 		local points = {}
 		for i = 0, KEYPOINTS - 1 do
 			local t = i / (KEYPOINTS - 1)
-			points[i + 1] = ColorSequenceKeypoint.new(t, Color3.fromHSV((t * SPAN + shift) % 1, 0.72, 1))
+			points[i + 1] = ColorSequenceKeypoint.new(t, Color3.fromHSV((t * span + shift) % 1, saturation, 1))
 		end
-		RAINBOW_FRAMES[step + 1] = ColorSequence.new(points)
+		frames[step + 1] = ColorSequence.new(points)
 	end
+	return frames
 end
+
+-- Accents : large amplitude, on voit tout le dégradé sur une petite surface.
+-- 0,85 tour et non un tour complet, sinon les deux extrémités retombent sur la
+-- même teinte et forment un aplat.
+local RAINBOW_FRAMES = buildFrames(0.85, 0.72)
+
+-- Fond : amplitude réduite. La sidebar et les cartes masquent l'essentiel du
+-- panneau ; un spectre complet n'y montrerait qu'une tranche monochrome. Deux
+-- ou trois teintes voisines qui dérivent se lisent bien mieux.
+local BACKDROP_FRAMES = buildFrames(0.22, 0.55)
 
 local RAINBOW = RAINBOW_FRAMES[1]
 
@@ -482,7 +492,7 @@ end
 
 local UILib = {}
 UILib.__index = UILib
-UILib.Version = "2.7.1"
+UILib.Version = "2.7.2"
 UILib.Themes = THEMES
 UILib.ThemeOrder = THEME_ORDER
 
@@ -597,6 +607,14 @@ function UILib:_ApplyTransparency()
 			obj.Transparency = self:_Alpha(base)
 		end
 	end
+end
+
+-- Change la transparence d'origine d'un élément. Il faut passer par ici et non
+-- écrire BackgroundTransparency directement : _ApplyTransparency mémorise la
+-- valeur de départ au premier passage et écraserait toute modification ensuite.
+function UILib:_SetBaseTransparency(instance, value)
+	self._baseTransparency[instance] = value
+	instance.BackgroundTransparency = self:_Alpha(value)
 end
 
 -- amount va de 0 (opaque) à 1 (invisible).
@@ -874,10 +892,11 @@ function UILib.new(options, legacyTheme)
 				end
 				lastStep = step
 
-				local sequence = RAINBOW_FRAMES[step + 1]
+				local accent = RAINBOW_FRAMES[step + 1]
+				local backdrop = BACKDROP_FRAMES[step + 1]
 				for _, entry in ipairs(self.AccentGradients) do
 					if entry.Gradient.Enabled then
-						entry.Gradient.Color = sequence
+						entry.Gradient.Color = (entry.Mode == "Background") and backdrop or accent
 					end
 				end
 			end)
@@ -1024,6 +1043,10 @@ function UILib.new(options, legacyTheme)
 	self:OnTheme(function(theme)
 		sidebar.BackgroundColor3 = theme.Sidebar
 		sidebar.ScrollBarImageColor3 = theme.Stroke
+		-- En thème RGB Fond, la sidebar devient translucide : opaque, elle
+		-- coupait le dégradé sur toute la moitié gauche du panneau. Elle garde
+		-- assez de matière pour que les onglets restent lisibles.
+		self:_SetBaseTransparency(sidebar, theme.Rainbow == "Background" and 0.45 or 0)
 	end)
 	self.Sidebar = sidebar
 

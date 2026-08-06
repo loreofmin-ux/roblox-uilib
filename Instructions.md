@@ -293,6 +293,7 @@ pas `☰ ✕ ▾ ✓` et les remplacerait par des carrés vides.
 
 | Version | Changement |
 | --- | --- |
+| 2.7.2 | Le fond RGB traverse la sidebar, dégradé de fond resserré sur des teintes voisines |
 | 2.7.1 | Dégradés visibles (base blanche), fond RGB adouci, retour au clic sur les boutons de la barre |
 | 2.7.0 | RGB sur les accents seulement + variante `RGBFond`, cycle de teintes régulier, panneau élargi, repli de sidebar animé |
 | 2.6.1 | Le voile RGB passe au-dessus du contenu : le dégradé n'est plus découpé |
