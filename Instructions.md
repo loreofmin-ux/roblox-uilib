@@ -220,6 +220,10 @@ signifierait rejouer des centaines d'écouteurs de thème par seconde. Ici, deux
 `UIGradient` sont mis à jour, et la boucle par image n'est branchée que tant que
 le thème RGB est actif. `Animations = false` la désactive aussi.
 
+Le voile est posé **au-dessus** du contenu, avec `Active = false` pour laisser
+passer les clics. Placé derrière, il n'apparaissait que dans les espaces entre
+les cartes opaques et découpait le dégradé en rectangles.
+
 ## Champs de texte
 
 Un champ resté actif capte le clavier — la touche Maj s'y écrit au lieu de
@@ -270,6 +274,7 @@ pas `☰ ✕ ▾ ✓` et les remplacerait par des carrés vides.
 
 | Version | Changement |
 | --- | --- |
+| 2.6.1 | Le voile RGB passe au-dessus du contenu : le dégradé n'est plus découpé |
 | 2.6.0 | Thème RGB animé, relâchement automatique du focus des champs de texte |
 | 2.5.1 | La bulle d'aide bascule à gauche du rond quand il est sur la moitié droite |
 | 2.5.0 | Entrée en cascade à l'ouverture du panneau |

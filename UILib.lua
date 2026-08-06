@@ -445,7 +445,7 @@ end
 
 local UILib = {}
 UILib.__index = UILib
-UILib.Version = "2.6.0"
+UILib.Version = "2.6.1"
 UILib.Themes = THEMES
 UILib.ThemeOrder = THEME_ORDER
 
@@ -747,13 +747,19 @@ function UILib.new(options, legacyTheme)
 	-- centaines d'écouteurs de thème). On superpose donc un voile dégradé :
 	-- deux instances à faire évoluer, et rien à recalculer ailleurs.
 	----------------------------------------------------------
+	-- Le voile passe AU-DESSUS du contenu. Placé derrière, il n'apparaissait que
+	-- dans les espaces entre les cartes opaques, ce qui découpait le dégradé en
+	-- rectangles au lieu d'une diagonale continue.
+	-- Active reste false : un Frame inactif ne capte pas les clics, les boutons
+	-- en dessous restent donc utilisables.
 	local rgbLayer = new("Frame", {
 		Name = "RGBLayer",
 		Size = UDim2.fromScale(1, 1),
 		BackgroundColor3 = Color3.fromRGB(255, 255, 255),
-		BackgroundTransparency = 0.8,
+		BackgroundTransparency = 0.88,
 		BorderSizePixel = 0,
-		ZIndex = 0,
+		Active = false,
+		ZIndex = 100,
 		Visible = false,
 		Parent = panel,
 	})
