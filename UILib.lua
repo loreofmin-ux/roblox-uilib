@@ -131,8 +131,10 @@ local THEMES = {
 		Element = Color3.fromRGB(33, 33, 41),
 		ElementHover = Color3.fromRGB(46, 46, 57),
 		Stroke = Color3.fromRGB(38, 38, 48),
-		Accent = Color3.fromRGB(190, 110, 245),
-		AccentText = Color3.fromRGB(255, 255, 255),
+		-- Blanc obligatoire : un UIGradient multiplie la couleur de dessous.
+		-- Sur un accent teinté, le dégradé ressortait sombre et délavé.
+		Accent = Color3.fromRGB(255, 255, 255),
+		AccentText = Color3.fromRGB(20, 20, 26),
 		Text = Color3.fromRGB(236, 236, 243),
 		SubText = Color3.fromRGB(140, 140, 156),
 		Swatch = Color3.fromRGB(255, 255, 255),
@@ -480,7 +482,7 @@ end
 
 local UILib = {}
 UILib.__index = UILib
-UILib.Version = "2.7.0"
+UILib.Version = "2.7.1"
 UILib.Themes = THEMES
 UILib.ThemeOrder = THEME_ORDER
 
@@ -804,6 +806,14 @@ function UILib.new(options, legacyTheme)
 	corner(panel, 10)
 	local panelStroke = stroke(panel)
 	self:OnTheme(function(theme)
+		-- La bordure porte le dégradé en thème RGB : elle doit être blanche et
+		-- plus épaisse, sinon le gris d'origine éteint les couleurs.
+		if theme.Rainbow == "Accent" then
+			panelStroke.Color = Color3.fromRGB(255, 255, 255)
+			panelStroke.Thickness = 2
+		else
+			panelStroke.Thickness = 1
+		end
 		panel.BackgroundColor3 = theme.Background
 		panelStroke.Color = theme.Stroke
 	end)
@@ -829,10 +839,13 @@ function UILib.new(options, legacyTheme)
 	-- Thème « RGB Fond » : couche dédiée derrière tout le contenu.
 	-- Le dégradé ne peut pas être posé sur le panneau lui-même : c'est un
 	-- CanvasGroup, un UIGradient y teinterait aussi les cartes et le texte.
+	-- Base volontairement sombre : le dégradé multiplie cette couleur, donc un
+	-- fond blanc donnait un arc-en-ciel néon criard. Ici on obtient un fond
+	-- coloré profond, sur lequel les cartes sombres restent lisibles.
 	local bgLayer = new("Frame", {
 		Name = "RGBBackground",
 		Size = UDim2.fromScale(1, 1),
-		BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+		BackgroundColor3 = Color3.fromRGB(58, 58, 72),
 		BorderSizePixel = 0,
 		Active = false,
 		ZIndex = 0,
@@ -889,9 +902,34 @@ function UILib.new(options, legacyTheme)
 		Parent = panel,
 	})
 
+	-- Retour au clic : le bouton s'enfonce puis revient avec un léger
+	-- dépassement. Ancrés au centre pour que la mise à l'échelle ne les décale
+	-- pas. Le relâchement écoute aussi MouseLeave, sinon un bouton quitté
+	-- pendant l'appui resterait enfoncé.
+	local BTN = 26
+	local function pressFeedback(button)
+		local normal = UDim2.fromOffset(BTN, BTN)
+		local pressed = UDim2.fromOffset(BTN - 6, BTN - 6)
+
+		button.MouseButton1Down:Connect(function()
+			TweenService:Create(button, TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				Size = pressed,
+			}):Play()
+		end)
+
+		local function release()
+			TweenService:Create(button, TweenInfo.new(0.24, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+				Size = normal,
+			}):Play()
+		end
+		button.MouseButton1Up:Connect(release)
+		button.MouseLeave:Connect(release)
+	end
+
 	local burger = new("TextButton", {
-		Size = UDim2.fromOffset(26, 26),
-		Position = UDim2.fromOffset(12, 9),
+		Size = UDim2.fromOffset(BTN, BTN),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromOffset(25, 22),
 		Text = "",
 		AutoButtonColor = false,
 		Parent = topBar,
@@ -924,8 +962,9 @@ function UILib.new(options, legacyTheme)
 	})
 
 	local closeBtn = new("TextButton", {
-		Size = UDim2.fromOffset(26, 26),
-		Position = UDim2.new(1, -38, 0, 9),
+		Size = UDim2.fromOffset(BTN, BTN),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(1, -25, 0, 22),
 		Text = "",
 		AutoButtonColor = false,
 		Parent = topBar,
@@ -934,14 +973,19 @@ function UILib.new(options, legacyTheme)
 	local _, closeBars = makeCross(closeBtn, 12, 2)
 
 	local minBtn = new("TextButton", {
-		Size = UDim2.fromOffset(26, 26),
-		Position = UDim2.new(1, -70, 0, 9),
+		Size = UDim2.fromOffset(BTN, BTN),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(1, -57, 0, 22),
 		Text = "",
 		AutoButtonColor = false,
 		Parent = topBar,
 	})
 	corner(minBtn, 6)
-	local _, minBars = makeDash(minBtn, 11, 2)
+	local minIcon, minBars = makeDash(minBtn, 11, 2)
+
+	pressFeedback(burger)
+	pressFeedback(minBtn)
+	pressFeedback(closeBtn)
 
 	self:OnTheme(function(theme)
 		titleLabel.TextColor3 = theme.Text
@@ -1219,9 +1263,22 @@ function UILib.new(options, legacyTheme)
 	local minimized = false
 	minBtn.MouseButton1Click:Connect(function()
 		minimized = not minimized
-		TweenService:Create(panel, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {
+
+		-- Quint sortante : le repli démarre franchement puis se pose en douceur.
+		TweenService:Create(panel, TweenInfo.new(0.3, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
 			Size = minimized and UDim2.fromOffset(PANEL_W, 44) or UDim2.fromOffset(PANEL_W, PANEL_H),
 		}):Play()
+
+		-- Le trait pivote et s'allonge : replié il évoque une barre à rouvrir,
+		-- déplié il redevient le tiret de réduction.
+		TweenService:Create(minIcon, TweenInfo.new(0.3, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+			Rotation = minimized and 90 or 0,
+		}):Play()
+		for _, bar in ipairs(minBars) do
+			TweenService:Create(bar, TweenInfo.new(0.3, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+				Size = minimized and UDim2.fromOffset(7, 2) or UDim2.fromOffset(11, 2),
+			}):Play()
+		end
 	end)
 
 	local sidebarOpen = true

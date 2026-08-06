@@ -230,6 +230,15 @@ Aucune couleur n'est recalculée par élément : chaque accent porte un
 `UIGradient` qu'on active ou non selon le thème. La boucle par image n'est
 branchée que tant qu'un thème RGB est actif, et `Animations = false` la coupe.
 
+**Un `UIGradient` multiplie la couleur qu'il recouvre.** C'est ce qui pilote le
+rendu des deux thèmes :
+
+- `RGB` met ses accents et sa bordure en **blanc**, pour que le dégradé sorte
+  dans ses vraies couleurs. Sur un accent teinté, il ressortait sombre et
+  délavé — au point de sembler ne pas fonctionner.
+- `RGBFond` pose sa couche de fond sur un **gris sombre**, ce qui donne un fond
+  coloré profond. Sur du blanc, l'arc-en-ciel était criard.
+
 Le fond RGB passe par une couche dédiée derrière le contenu. Il ne peut pas être
 posé sur le panneau lui-même : c'est un `CanvasGroup`, et un `UIGradient` y
 teinterait aussi les cartes et le texte.
@@ -284,6 +293,7 @@ pas `☰ ✕ ▾ ✓` et les remplacerait par des carrés vides.
 
 | Version | Changement |
 | --- | --- |
+| 2.7.1 | Dégradés visibles (base blanche), fond RGB adouci, retour au clic sur les boutons de la barre |
 | 2.7.0 | RGB sur les accents seulement + variante `RGBFond`, cycle de teintes régulier, panneau élargi, repli de sidebar animé |
 | 2.6.1 | Le voile RGB passe au-dessus du contenu : le dégradé n'est plus découpé |
 | 2.6.0 | Thème RGB animé, relâchement automatique du focus des champs de texte |
