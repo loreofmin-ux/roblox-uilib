@@ -26,10 +26,33 @@ local Hub = UILib.new({
     Title = "Mon Hub",
     Subtitle = "Mon Jeu | v1.0.0",
     Theme = "Green",       -- Dark | Light | Blue | Green | Yellow
+    Language = "fr",       -- "fr" | "en" (défaut "fr")
     ConfigFile = "MonHub", -- fichier de sauvegarde des configs
     Width = 940,           -- optionnel (défaut 940)
     Height = 580,          -- optionnel (défaut 580)
+    Animations = true,     -- optionnel, false pour tout désactiver
 })
+```
+
+`Subtitle` t'appartient : c'est le nom de ton jeu et **ta** version de script.
+La librairie n'y touche pas. Si tu l'omets, la version de UILib s'affiche à la
+place. Pour montrer les deux :
+
+```lua
+Subtitle = "Mon Jeu v1.0.0 · UILib v" .. UILib.Version
+```
+
+La version de la librairie est lisible dans `UILib.Version`, et affichée dans
+l'onglet **Réglages → Interface**.
+
+## Langue
+
+Les textes produits par la librairie sont traduits en français et en anglais.
+Les libellés que tu écris toi-même ne sont jamais touchés.
+
+```lua
+Hub:SetLanguage("en")   -- bascule à chaud, tout se retraduit
+Hub:T("Save")           -- accès direct à une chaîne traduite
 
 local main = Hub:AddTab("Main", "Game")
 
@@ -184,7 +207,45 @@ la librairie a branché et détruit le `ScreenGui`. L'appel est idempotent.
 ## Thèmes
 
 Cinq thèmes intégrés : `Dark`, `Light`, `Blue`, `Green`, `Yellow`.
-Changeables via `Hub:SetTheme(nom)` ou depuis l'onglet **UI Settings**.
+Changeables via `Hub:SetTheme(nom)` ou depuis l'onglet **Réglages → Interface**.
+
+## Transparence
+
+Un curseur à cinq crans (0 / 15 / 30 / 45 / 60 %) règle la transparence globale.
+
+```lua
+Hub:SetTransparency(0.3)   -- 0 = opaque, 1 = invisible
+```
+
+Seuls les **fonds** s'estompent : le texte reste opaque, sinon l'interface
+devient illisible dans les crans élevés.
+
+## Icônes
+
+Les icônes (menu, croix, chevron, coche) sont **dessinées avec des `Frame`**,
+pas écrites avec des caractères Unicode : la police Gotham de Roblox ne contient
+pas `☰ ✕ ▾ ✓` et les remplacerait par des carrés vides.
+
+## Animations
+
+Changer d'onglet fait glisser la page depuis la droite en descendant dans la
+sidebar, depuis la gauche en remontant (0,16 s). À la fermeture par la croix, le
+rond flottant émet des ondes et affiche une bulle d'aide, pour signaler que
+c'est lui qui rouvre le panneau.
+
+`Animations = false` à la création désactive l'ensemble.
+
+## Historique des versions
+
+| Version | Changement |
+| --- | --- |
+| 2.3.0 | Icônes dessinées, transparence globale, animations, langue FR/EN |
+| 2.2.0 | Dropdowns acceptant les dictionnaires |
+| 2.1.0 | Dropdowns à choix multiple |
+| 2.0.1 | Panneau agrandi à 940×580 |
+| 2.0.0 | Méthodes `Update*`, `Unload` — `AddButton`/`AddNote` renvoient une table |
+| 1.0.1 | Correction du glisser qui décrochait |
+| 1.0.0 | Version initiale |
 
 ## Configurations
 

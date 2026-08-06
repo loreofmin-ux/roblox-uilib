@@ -9,7 +9,10 @@ local UILib = require(ReplicatedStorage:WaitForChild("UILib"))
 
 local Hub = UILib.new({
 	Title = "Mon Hub",
-	Subtitle = "Mon Jeu | v1.0.0",
+	-- Subtitle t'appartient : c'est le nom de ton jeu et TA version de script,
+	-- pas celle de la librairie (lisible dans UILib.Version). Sans valeur ici,
+	-- la version de UILib s'affiche à la place.
+	Subtitle = "Mon Jeu v1.0.0 · UILib v" .. UILib.Version,
 	Theme = "Green", -- "Dark" | "Light" | "Blue" | "Green" | "Yellow"
 	ConfigFile = "MonHub", -- fichier où sont stockées les configs
 })

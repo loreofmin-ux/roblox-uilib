@@ -1,4 +1,6 @@
--- UILib v2 : librairie de UI flottante/déplaçable pour Roblox.
+-- UILib : librairie de UI flottante/déplaçable pour Roblox.
+-- Version : voir UILib.Version ci-dessous. À incrémenter à chaque modification
+-- (majeur = rupture d'API, mineur = ajout, correctif = correction).
 -- Placer ce ModuleScript dans ReplicatedStorage (ou le loader via loadstring).
 --
 -- Structure : Hub > Onglet (rangé par catégorie dans la sidebar) > Section (carte)
@@ -117,6 +119,61 @@ local THEMES = {
 local THEME_ORDER = { "Dark", "Light", "Blue", "Green", "Yellow" }
 
 --==============================================================
+-- Traductions
+--
+-- Seuls les textes produits par la librairie sont concernés : les libellés
+-- fournis par le script appelant restent tels qu'il les a écrits.
+--==============================================================
+
+local LOCALES = {
+	fr = {
+		SettingsCategory = "Réglages",
+		SettingsTab = "Interface",
+		Configurations = "Configurations",
+		ConfigDropdown = "Config",
+		LoadConfig = "Charger la config",
+		DeleteConfig = "Supprimer la config",
+		NewConfigName = "Nom de la nouvelle config...",
+		Save = "Sauvegarder",
+		AutoLoad = "Charger au démarrage",
+		StorageNote = "Stockage fichier indisponible ici : les configs ne survivront pas au redémarrage. Sur un exécuteur (writefile), elles sont enregistrées sur le disque.",
+		Appearance = "Apparence",
+		ThemeLabel = "Thème de l'interface",
+		Transparency = "Transparence",
+		Language = "Langue",
+		AppearanceNote = "Le thème, la transparence et la langue sont enregistrés avec chaque configuration.",
+		Script = "Script",
+		Unload = "Décharger le script",
+		UnloadNote = "Ferme l'interface et coupe tout ce que la librairie a branché. Il faudra relancer le script pour la rouvrir.",
+		ReopenHint = "Clique ici pour rouvrir",
+	},
+	en = {
+		SettingsCategory = "Settings",
+		SettingsTab = "Interface",
+		Configurations = "Configurations",
+		ConfigDropdown = "Config",
+		LoadConfig = "Load config",
+		DeleteConfig = "Delete config",
+		NewConfigName = "New config name...",
+		Save = "Save",
+		AutoLoad = "Load on startup",
+		StorageNote = "File storage is unavailable here, so configs will not survive a restart. On an executor (writefile) they are saved to disk.",
+		Appearance = "Appearance",
+		ThemeLabel = "Interface theme",
+		Transparency = "Transparency",
+		Language = "Language",
+		AppearanceNote = "Theme, transparency and language are saved with each configuration.",
+		Script = "Script",
+		Unload = "Unload script",
+		UnloadNote = "Closes the interface and disconnects everything the library hooked up. You will need to run the script again to reopen it.",
+		ReopenHint = "Click here to reopen",
+	},
+}
+
+-- Libellé affiché -> code, pour le sélecteur de langue.
+local LANGUAGE_CHOICES = { English = "en", ["Français"] = "fr" }
+
+--==============================================================
 -- Stockage des configs
 --
 -- Les exécuteurs exposent writefile/readfile ; dans Studio ces globales
@@ -204,6 +261,87 @@ end
 -- connections : table où déposer les connexions globales, pour que Destroy()
 -- puisse les couper (contrairement aux signaux d'instance, elles survivent à
 -- la destruction du ScreenGui).
+--==============================================================
+-- Icônes
+--
+-- Gotham ne contient pas les glyphes ☰ ✕ ▾ ✓ : Roblox les remplace alors par
+-- des carrés vides. On dessine donc chaque icône avec des Frames, ce qui ne
+-- dépend d'aucune police ni d'aucun asset distant.
+--==============================================================
+
+local function iconBar(parent, width, thickness, offsetX, offsetY, rotation)
+	local bar = new("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(0.5, offsetX or 0, 0.5, offsetY or 0),
+		Size = UDim2.fromOffset(width, thickness),
+		Rotation = rotation or 0,
+		BorderSizePixel = 0,
+		Parent = parent,
+	})
+	corner(bar, math.max(math.floor(thickness / 2), 1))
+	return bar
+end
+
+local function iconHolder(parent)
+	return new("Frame", {
+		Name = "Icon",
+		Size = UDim2.fromScale(1, 1),
+		BackgroundTransparency = 1,
+		Parent = parent,
+	})
+end
+
+-- Trois barres horizontales.
+local function makeBurger(parent, width, thickness, gap)
+	local holder = iconHolder(parent)
+	local bars = {}
+	for i = 1, 3 do
+		bars[i] = iconBar(holder, width, thickness, 0, (i - 2) * gap)
+	end
+	return holder, bars
+end
+
+-- Deux barres croisées.
+local function makeCross(parent, length, thickness)
+	local holder = iconHolder(parent)
+	return holder, {
+		iconBar(holder, length, thickness, 0, 0, 45),
+		iconBar(holder, length, thickness, 0, 0, -45),
+	}
+end
+
+local function makeDash(parent, width, thickness)
+	local holder = iconHolder(parent)
+	return holder, { iconBar(holder, width, thickness) }
+end
+
+-- Chevron pointant vers le bas. Une barre de longueur L tournée de 45° avance
+-- de 0,354*L sur chaque axe : les deux segments se rejoignent donc au centre.
+local function makeChevron(parent, length, thickness)
+	local holder = iconHolder(parent)
+	local dx = math.floor(0.354 * length + 0.5)
+	local dy = math.floor(0.177 * length + 0.5)
+	return holder, {
+		iconBar(holder, length, thickness, -dx, -dy, 45),
+		iconBar(holder, length, thickness, dx, -dy, -45),
+	}
+end
+
+-- Coche : un segment court qui descend, un long qui remonte.
+local function makeCheck(parent, scale, thickness)
+	local holder = iconHolder(parent)
+	return holder, {
+		iconBar(holder, math.floor(scale * 0.45), thickness, -math.floor(scale * 0.22), math.floor(scale * 0.14), 45),
+		iconBar(holder, math.floor(scale * 0.75), thickness, math.floor(scale * 0.14), 0, -50),
+	}
+end
+
+local function paintIcon(bars, color)
+	for _, bar in ipairs(bars) do
+		bar.BackgroundColor3 = color
+	end
+end
+
 local function makeDraggable(handle, target, connections)
 	local dragging = false
 	local dragStart, startPos
@@ -261,6 +399,7 @@ end
 
 local UILib = {}
 UILib.__index = UILib
+UILib.Version = "2.3.0"
 UILib.Themes = THEMES
 UILib.ThemeOrder = THEME_ORDER
 
@@ -281,6 +420,76 @@ function UILib:OnTheme(fn)
 	fn(self.Theme)
 end
 
+--------------------------------------------------------------
+-- Langue
+--------------------------------------------------------------
+
+function UILib:T(key)
+	local pack = LOCALES[self.Language] or LOCALES.fr
+	return pack[key] or (LOCALES.fr[key] or key)
+end
+
+-- Même principe que OnTheme : la fonction est enregistrée puis exécutée tout de
+-- suite, et rejouée à chaque changement de langue.
+function UILib:OnLanguage(fn)
+	table.insert(self.LanguageListeners, fn)
+	fn(self.Language)
+end
+
+function UILib:SetLanguage(code)
+	if not LOCALES[code] or code == self.Language then
+		return
+	end
+	self.Language = code
+	for _, fn in ipairs(self.LanguageListeners) do
+		fn(code)
+	end
+end
+
+--------------------------------------------------------------
+-- Transparence globale
+--------------------------------------------------------------
+
+-- Transparence effective d'une surface, à partir de sa valeur d'origine.
+-- Une surface déjà invisible (base = 1) le reste.
+function UILib:_Alpha(base)
+	local amount = self.Transparency or 0
+	return base + (1 - base) * amount
+end
+
+-- Plutôt que de marquer chaque élément à sa création, on parcourt l'arbre et on
+-- mémorise la transparence d'origine de chaque objet la première fois qu'on le
+-- voit. Les éléments ajoutés plus tard sont donc pris en compte tout seuls.
+function UILib:_ApplyTransparency()
+	if not self.ScreenGui then
+		return
+	end
+	local bases = self._baseTransparency
+	for _, obj in ipairs(self.ScreenGui:GetDescendants()) do
+		if obj:IsA("GuiObject") then
+			local base = bases[obj]
+			if base == nil then
+				base = obj.BackgroundTransparency
+				bases[obj] = base
+			end
+			obj.BackgroundTransparency = self:_Alpha(base)
+		elseif obj:IsA("UIStroke") then
+			local base = bases[obj]
+			if base == nil then
+				base = obj.Transparency
+				bases[obj] = base
+			end
+			obj.Transparency = self:_Alpha(base)
+		end
+	end
+end
+
+-- amount va de 0 (opaque) à 1 (invisible).
+function UILib:SetTransparency(amount)
+	self.Transparency = math.clamp(tonumber(amount) or 0, 0, 1)
+	self:_ApplyTransparency()
+end
+
 function UILib:SetTheme(name)
 	local theme = THEMES[name]
 	if not theme then
@@ -291,6 +500,9 @@ function UILib:SetTheme(name)
 	for _, fn in ipairs(self.ThemeListeners) do
 		fn(theme)
 	end
+	-- Les écouteurs de thème réécrivent des couleurs, jamais la transparence :
+	-- on la réapplique après coup pour qu'elle ne soit pas perdue.
+	self:_ApplyTransparency()
 end
 
 --------------------------------------------------------------
@@ -412,6 +624,13 @@ function UILib.new(options, legacyTheme)
 	self.Categories = {}
 	self.Connections = {}
 	self.UnloadCallbacks = {}
+	self.Transparency = 0
+	self.Language = LOCALES[options.Language] and options.Language or "fr"
+	self.LanguageListeners = {}
+	-- Clés faibles : les éléments éphémères (ondes du rappel visuel) ne doivent
+	-- pas rester référencés ici après leur destruction.
+	self._baseTransparency = setmetatable({}, { __mode = "k" })
+	self.Animations = options.Animations ~= false
 	self.ConfigFile = (options.ConfigFile or "UILib_Config") .. ".json"
 
 	local parentGui = playerGui
@@ -446,16 +665,9 @@ function UILib.new(options, legacyTheme)
 		hubStroke.Color = theme.Background
 	end)
 
-	local hubLabel = new("TextLabel", {
-		Size = UDim2.fromScale(1, 1),
-		BackgroundTransparency = 1,
-		Text = "☰",
-		TextSize = 22,
-		Font = FONT_BOLD,
-		Parent = hubIcon,
-	})
+	local _, hubBars = makeBurger(hubIcon, 20, 3, 6)
 	self:OnTheme(function(theme)
-		hubLabel.TextColor3 = theme.AccentText
+		paintIcon(hubBars, theme.AccentText)
 	end)
 
 	----------------------------------------------------------
@@ -493,13 +705,12 @@ function UILib.new(options, legacyTheme)
 	local burger = new("TextButton", {
 		Size = UDim2.fromOffset(26, 26),
 		Position = UDim2.fromOffset(12, 9),
-		Text = "☰",
-		TextSize = 15,
-		Font = FONT,
+		Text = "",
 		AutoButtonColor = false,
 		Parent = topBar,
 	})
 	corner(burger, 6)
+	local _, burgerBars = makeBurger(burger, 13, 2, 4)
 
 	local titleLabel = new("TextLabel", {
 		Size = UDim2.new(1, -200, 0, 16),
@@ -516,7 +727,9 @@ function UILib.new(options, legacyTheme)
 		Size = UDim2.new(1, -200, 0, 13),
 		Position = UDim2.fromOffset(48, 23),
 		BackgroundTransparency = 1,
-		Text = options.Subtitle or "",
+		-- Subtitle appartient au script appelant (nom du jeu, sa propre version).
+		-- Sans valeur, on affiche celle de la librairie plutôt que rien.
+		Text = options.Subtitle or ("UILib v" .. UILib.Version),
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Font = FONT,
 		TextSize = 11,
@@ -526,32 +739,32 @@ function UILib.new(options, legacyTheme)
 	local closeBtn = new("TextButton", {
 		Size = UDim2.fromOffset(26, 26),
 		Position = UDim2.new(1, -38, 0, 9),
-		Text = "✕",
-		TextSize = 13,
-		Font = FONT,
+		Text = "",
 		AutoButtonColor = false,
 		Parent = topBar,
 	})
 	corner(closeBtn, 6)
+	local _, closeBars = makeCross(closeBtn, 12, 2)
 
 	local minBtn = new("TextButton", {
 		Size = UDim2.fromOffset(26, 26),
 		Position = UDim2.new(1, -70, 0, 9),
-		Text = "—",
-		TextSize = 13,
-		Font = FONT,
+		Text = "",
 		AutoButtonColor = false,
 		Parent = topBar,
 	})
 	corner(minBtn, 6)
+	local _, minBars = makeDash(minBtn, 11, 2)
 
 	self:OnTheme(function(theme)
 		titleLabel.TextColor3 = theme.Text
 		subtitleLabel.TextColor3 = theme.SubText
 		for _, b in ipairs({ burger, closeBtn, minBtn }) do
 			b.BackgroundColor3 = theme.Element
-			b.TextColor3 = theme.Text
 		end
+		paintIcon(burgerBars, theme.Text)
+		paintIcon(closeBars, theme.Text)
+		paintIcon(minBars, theme.Text)
 	end)
 
 	-- Sidebar
@@ -601,13 +814,115 @@ function UILib.new(options, legacyTheme)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 			if not isDragged() then
 				panel.Visible = not panel.Visible
+				-- Le message a rempli son office dès que l'utilisateur clique.
+				hideHint()
 			end
 		end
 	end)
 	makeDraggable(topBar, panel, self.Connections)
 
+	----------------------------------------------------------
+	-- Rappel visuel après fermeture
+	--
+	-- Une fois le panneau fermé par la croix, rien n'indique que c'est le rond
+	-- flottant qui le rouvre. On le signale par des ondes et une bulle d'aide.
+	----------------------------------------------------------
+	local hint = new("Frame", {
+		Name = "HubHint",
+		AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.new(1, 10, 0.5, 0),
+		Size = UDim2.fromOffset(150, 26),
+		Visible = false,
+		Parent = hubIcon,
+	})
+	corner(hint, 6)
+
+	local hintLabel = new("TextLabel", {
+		Size = UDim2.fromScale(1, 1),
+		BackgroundTransparency = 1,
+		Font = FONT,
+		TextSize = 12,
+		Parent = hint,
+	})
+	self:OnLanguage(function()
+		hintLabel.Text = self:T("ReopenHint")
+	end)
+
+	self:OnTheme(function(theme)
+		hint.BackgroundColor3 = theme.Card
+		hintLabel.TextColor3 = theme.Text
+	end)
+
+	local function ripple()
+		local ring = new("Frame", {
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.5),
+			Size = UDim2.fromScale(1, 1),
+			BackgroundTransparency = 1,
+			Parent = hubIcon,
+		})
+		new("UICorner", { CornerRadius = UDim.new(1, 0), Parent = ring })
+		local ringStroke = new("UIStroke", {
+			Color = self.Theme.Accent,
+			Thickness = 2,
+			Parent = ring,
+		})
+
+		TweenService:Create(ring, TweenInfo.new(0.7, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			Size = UDim2.fromScale(1.9, 1.9),
+		}):Play()
+		TweenService:Create(ringStroke, TweenInfo.new(0.7), { Transparency = 1 }):Play()
+
+		task.delay(0.75, function()
+			ring:Destroy()
+		end)
+	end
+
+	local hintToken = 0
+	local function callAttention()
+		if not self.Animations then
+			return
+		end
+
+		hintToken = hintToken + 1
+		local token = hintToken
+
+		hint.Visible = true
+		hint.BackgroundTransparency = 1
+		hintLabel.TextTransparency = 1
+		TweenService:Create(hint, TweenInfo.new(0.2), { BackgroundTransparency = self:_Alpha(0) }):Play()
+		TweenService:Create(hintLabel, TweenInfo.new(0.2), { TextTransparency = 0 }):Play()
+
+		task.spawn(function()
+			for i = 1, 3 do
+				-- Un jeton par appel : si le panneau est rouvert entre-temps,
+				-- l'ancienne séquence s'arrête au lieu de continuer à clignoter.
+				if token ~= hintToken then
+					return
+				end
+				ripple()
+				task.wait(0.75)
+			end
+			if token ~= hintToken then
+				return
+			end
+			TweenService:Create(hint, TweenInfo.new(0.3), { BackgroundTransparency = 1 }):Play()
+			TweenService:Create(hintLabel, TweenInfo.new(0.3), { TextTransparency = 1 }):Play()
+			task.wait(0.32)
+			if token == hintToken then
+				hint.Visible = false
+			end
+		end)
+	end
+
+	local function hideHint()
+		hintToken = hintToken + 1
+		hint.Visible = false
+	end
+
 	closeBtn.MouseButton1Click:Connect(function()
 		panel.Visible = false
+		callAttention()
 	end)
 
 	local minimized = false
@@ -665,6 +980,14 @@ function UILib:_GetCategory(name, order)
 	return cat
 end
 
+-- Change le texte affiché d'une catégorie sans toucher à sa clé interne.
+function UILib:SetCategoryTitle(key, title)
+	local cat = self.Categories[key]
+	if cat then
+		cat.Label.Text = title
+	end
+end
+
 function UILib:AddTab(name, categoryName, internal)
 	categoryName = categoryName or "Menu"
 	local baseOrder = internal and 9000 or (100 * (1 + #self.Tabs))
@@ -690,6 +1013,11 @@ function UILib:AddWindow(name, categoryName)
 end
 
 function UILib:SelectTab(tab)
+	local previous = self.Selected
+	if previous == tab then
+		return
+	end
+
 	for _, t in ipairs(self.Tabs) do
 		t.Page.Visible = false
 		t:_Refresh(self.Theme)
@@ -697,6 +1025,38 @@ function UILib:SelectTab(tab)
 	tab.Page.Visible = true
 	tab:_Refresh(self.Theme)
 	self.Selected = tab
+
+	-- La nouvelle page arrive du côté d'où l'on vient : descendre dans la
+	-- sidebar la fait glisser depuis la droite, remonter depuis la gauche.
+	if self.Animations and previous then
+		-- Le premier des deux rencontré dans la sidebar indique le sens.
+		local goingDown = true
+		for _, t in ipairs(self.Tabs) do
+			if t == tab then
+				goingDown = false
+				break
+			end
+			if t == previous then
+				goingDown = true
+				break
+			end
+		end
+
+		tab.Page.Position = UDim2.fromScale(goingDown and 0.05 or -0.05, 0)
+		TweenService:Create(
+			tab.Page,
+			TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+			{ Position = UDim2.fromScale(0, 0) }
+		):Play()
+
+		-- Le repère d'onglet se déplie depuis son centre.
+		tab.Marker.Size = UDim2.fromOffset(3, 0)
+		TweenService:Create(
+			tab.Marker,
+			TweenInfo.new(0.2, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+			{ Size = UDim2.fromOffset(3, 16) }
+		):Play()
+	end
 end
 
 --------------------------------------------------------------
@@ -722,9 +1082,11 @@ function Tab.new(hub, name, order)
 	})
 	corner(button, 6)
 
+	-- Ancré au centre pour que l'animation le déplie de part et d'autre.
 	local marker = new("Frame", {
 		Size = UDim2.fromOffset(3, 16),
-		Position = UDim2.new(0, 0, 0.5, -8),
+		AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.new(0, 0, 0.5, 0),
 		BorderSizePixel = 0,
 		Parent = button,
 	})
@@ -814,10 +1176,23 @@ end
 function Tab:_Refresh(theme)
 	local active = self.Page.Visible
 	self.Button.BackgroundColor3 = active and theme.Element or theme.Sidebar
-	self.Button.BackgroundTransparency = active and 0 or 1
+	-- Passe par _Alpha : sinon l'onglet actif redeviendrait opaque alors que le
+	-- reste de l'interface est réglé en transparent.
+	self.Button.BackgroundTransparency = active and self.Hub:_Alpha(0) or 1
 	self.Label.TextColor3 = active and theme.Accent or theme.SubText
 	self.Marker.BackgroundColor3 = theme.Accent
 	self.Marker.Visible = active
+	if active then
+		-- SelectTab rejoue l'animation ; ici on garantit juste la taille finale
+		-- quand _Refresh est appelé hors changement d'onglet (thème, etc.).
+		self.Marker.Size = UDim2.fromOffset(3, 16)
+	end
+end
+
+-- Texte affiché de l'onglet dans la sidebar.
+function Tab:SetTitle(title)
+	self.Label.Text = title
+	return self
 end
 
 function Tab:AddSection(name, opts)
@@ -907,6 +1282,12 @@ function Section.new(tab, name, parentColumn, opts)
 		cardStroke.Color = theme.Stroke
 		headerLabel.TextColor3 = theme.Text
 	end)
+
+	-- Titre de la carte, modifiable après coup (utilisé au changement de langue).
+	function self:SetTitle(title)
+		headerLabel.Text = title
+		return self
+	end
 
 	if opts.Toggle then
 		local flag = opts.Flag or (tab.Name .. "/" .. name .. "/__section")
@@ -1276,10 +1657,14 @@ function Section:AddSlider(text, min, max, default, callback, opts)
 		return math.max(max - min, 1)
 	end
 
+	-- opts.Format permet d'afficher autre chose que le nombre brut, par exemple
+	-- un pourcentage quand le slider sert d'index sur quelques positions.
+	local format = opts.Format
+
 	local function apply(v, fire)
 		value = math.clamp(math.floor(v + 0.5), min, max)
 		fill.Size = UDim2.fromScale((value - min) / span(), 1)
-		label.Text = text .. ": " .. tostring(value)
+		label.Text = text .. ": " .. (format and tostring(format(value)) or tostring(value))
 		if fire then
 			callback(value)
 		end
@@ -1344,6 +1729,9 @@ function Section:AddSlider(text, min, max, default, callback, opts)
 		end
 		if newCallback ~= nil then
 			callback = newCallback
+		end
+		if newOpts.Format ~= nil then
+			format = newOpts.Format
 		end
 		if newOpts.Flag ~= nil and newOpts.Flag ~= flag then
 			hub:_Unregister(flag)
@@ -1506,15 +1894,13 @@ function Section:AddDropdown(text, options, default, callback, opts)
 		Parent = header,
 	})
 
-	local arrow = new("TextLabel", {
+	local arrow = new("Frame", {
 		Size = UDim2.fromOffset(20, 30),
 		Position = UDim2.new(1, -26, 0, 0),
 		BackgroundTransparency = 1,
-		Text = "▾",
-		Font = FONT,
-		TextSize = 12,
 		Parent = header,
 	})
+	local arrowIcon, arrowBars = makeChevron(arrow, 8, 2)
 
 	local list = new("Frame", {
 		Size = UDim2.new(1, 0, 0, 0),
@@ -1540,7 +1926,7 @@ function Section:AddDropdown(text, options, default, callback, opts)
 	hub:OnTheme(function(theme)
 		header.BackgroundColor3 = theme.Element
 		headerLabel.TextColor3 = theme.Text
-		arrow.TextColor3 = theme.SubText
+		paintIcon(arrowBars, theme.SubText)
 		list.BackgroundColor3 = theme.Element
 	end)
 
@@ -1633,8 +2019,8 @@ function Section:AddDropdown(text, options, default, callback, opts)
 			else
 				view.Button.TextColor3 = theme.Text
 			end
-			if view.Mark then
-				view.Mark.TextColor3 = theme.AccentText
+			if view.MarkBars then
+				paintIcon(view.MarkBars, theme.AccentText)
 			end
 		end
 	end
@@ -1721,15 +2107,8 @@ function Section:AddDropdown(text, options, default, callback, opts)
 				})
 				corner(box, 4)
 
-				local mark = new("TextLabel", {
-					Size = UDim2.fromScale(1, 1),
-					BackgroundTransparency = 1,
-					Text = "✓",
-					TextSize = 11,
-					Font = FONT_BOLD,
-					Visible = false,
-					Parent = box,
-				})
+				local mark, markBars = makeCheck(box, 14, 2)
+				mark.Visible = false
 
 				local optLabel = new("TextLabel", {
 					Size = UDim2.new(1, -30, 1, 0),
@@ -1745,11 +2124,12 @@ function Section:AddDropdown(text, options, default, callback, opts)
 
 				view.Check = box
 				view.Mark = mark
+				view.MarkBars = markBars
 				view.Label = optLabel
 			end
 
 			optBtn.MouseEnter:Connect(function()
-				optBtn.BackgroundTransparency = 0
+				optBtn.BackgroundTransparency = hub:_Alpha(0)
 				optBtn.BackgroundColor3 = hub.Theme.ElementHover
 			end)
 			optBtn.MouseLeave:Connect(function()
@@ -1764,7 +2144,7 @@ function Section:AddDropdown(text, options, default, callback, opts)
 					select(option, true)
 					expanded = false
 					list.Visible = false
-					arrow.Text = "▾"
+					arrowIcon.Rotation = 0
 				end
 			end)
 
@@ -1825,7 +2205,8 @@ function Section:AddDropdown(text, options, default, callback, opts)
 	header.MouseButton1Click:Connect(function()
 		expanded = not expanded
 		list.Visible = expanded
-		arrow.Text = expanded and "▴" or "▾"
+		-- Le chevron pointe vers le bas ; on le retourne quand la liste s'ouvre.
+		arrowIcon.Rotation = expanded and 180 or 0
 	end)
 
 	api:SetOptions(options or {})
@@ -2033,27 +2414,27 @@ end
 --------------------------------------------------------------
 
 function UILib:_BuildSettingsTab()
-	local tab = self:AddTab("UI Settings", "Settings", true)
+	local tab = self:AddTab(self:T("SettingsTab"), "Settings", true)
 
-	local cfgSection = tab:AddSection("Configurations", { Column = 1 })
-	self._configDropdown = cfgSection:AddDropdown("Config", self:ListConfigs(), nil, function() end)
+	local cfgSection = tab:AddSection(self:T("Configurations"), { Column = 1 })
+	self._configDropdown = cfgSection:AddDropdown(self:T("ConfigDropdown"), self:ListConfigs(), nil, function() end)
 
-	cfgSection:AddButton("Charger la config", function()
+	local loadBtn = cfgSection:AddButton(self:T("LoadConfig"), function()
 		local name = self._configDropdown:Get()
 		if name then
 			self:LoadConfig(name)
 		end
 	end)
 
-	cfgSection:AddButton("Supprimer la config", function()
+	local deleteBtn = cfgSection:AddButton(self:T("DeleteConfig"), function()
 		local name = self._configDropdown:Get()
 		if name then
 			self:DeleteConfig(name)
 		end
 	end)
 
-	local nameBox = cfgSection:AddTextbox("Nom de la nouvelle config...", function() end)
-	cfgSection:AddButton("Sauvegarder", function()
+	local nameBox = cfgSection:AddTextbox(self:T("NewConfigName"), function() end)
+	local saveBtn = cfgSection:AddButton(self:T("Save"), function()
 		local name = nameBox:Get()
 		if name and name ~= "" then
 			self:SaveConfig(name)
@@ -2062,24 +2443,88 @@ function UILib:_BuildSettingsTab()
 	end)
 
 	local store = self:_Store()
-	cfgSection:AddToggle("Charger au démarrage", store.AutoLoad or false, function(on)
+	local autoLoadToggle = cfgSection:AddToggle(self:T("AutoLoad"), store.AutoLoad or false, function(on)
 		self:SetAutoLoad(on)
 	end, { Flag = "__autoload" })
 
+	local storageNote
 	if not Storage.IsPersistent() then
-		cfgSection:AddNote("Stockage fichier indisponible ici : les configs ne survivront pas au redémarrage. Sur un exécuteur (writefile), elles sont enregistrées sur le disque.")
+		storageNote = cfgSection:AddNote(self:T("StorageNote"))
 	end
 
-	local themeSection = tab:AddSection("Apparence", { Column = 2 })
-	themeSection:AddLabel("Thème de l'interface")
+	local themeSection = tab:AddSection(self:T("Appearance"), { Column = 2 })
+	local themeLabel = themeSection:AddLabel(self:T("ThemeLabel"))
 	themeSection:AddThemePicker()
-	themeSection:AddNote("Le thème choisi est enregistré avec chaque configuration.")
 
-	local scriptSection = tab:AddSection("Script", { Column = 2 })
-	scriptSection:AddButton("Décharger le script", function()
+	-- Slider d'index : 5 crans francs plutôt qu'un réglage continu, pour qu'on
+	-- retombe toujours sur le même rendu.
+	local STEPS = { 0, 0.15, 0.3, 0.45, 0.6 }
+	local function formatTransparency(index)
+		return math.floor((STEPS[index] or 0) * 100 + 0.5) .. " %"
+	end
+	local transparencySlider = themeSection:AddSlider(self:T("Transparency"), 1, #STEPS, 1, function(index)
+		self:SetTransparency(STEPS[index] or 0)
+	end, {
+		Flag = "__transparency",
+		Format = formatTransparency,
+	})
+
+	-- Dictionnaire : le libellé s'affiche, le code de langue part au callback.
+	local languageDropdown = themeSection:AddDropdown(self:T("Language"), LANGUAGE_CHOICES, nil, function(_, code)
+		self:SetLanguage(code)
+	end, { Flag = "__language", Save = true })
+	for label, code in pairs(LANGUAGE_CHOICES) do
+		if code == self.Language then
+			languageDropdown:Set(label)
+		end
+	end
+
+	local appearanceNote = themeSection:AddNote(self:T("AppearanceNote"))
+
+	local scriptSection = tab:AddSection(self:T("Script"), { Column = 2 })
+	scriptSection:AddLabel("UILib v" .. UILib.Version)
+	local unloadBtn = scriptSection:AddButton(self:T("Unload"), function()
 		self:Unload()
 	end)
-	scriptSection:AddNote("Ferme l'interface et coupe tout ce que la librairie a branché. Il faudra relancer le script pour la rouvrir.")
+	local unloadNote = scriptSection:AddNote(self:T("UnloadNote"))
+
+	-- Un seul point de retraduction : tout ce que la librairie affiche est
+	-- réécrit ici quand la langue change.
+	self:OnLanguage(function()
+		self:SetCategoryTitle("Settings", self:T("SettingsCategory"))
+		tab:SetTitle(self:T("SettingsTab"))
+
+		cfgSection:SetTitle(self:T("Configurations"))
+		self._configDropdown:UpdateDropdown(self:T("ConfigDropdown"))
+		loadBtn:UpdateButton(self:T("LoadConfig"))
+		deleteBtn:UpdateButton(self:T("DeleteConfig"))
+		nameBox:UpdateTextbox(self:T("NewConfigName"))
+		saveBtn:UpdateButton(self:T("Save"))
+		autoLoadToggle:UpdateToggle(self:T("AutoLoad"))
+		if storageNote then
+			storageNote:UpdateNote(self:T("StorageNote"))
+		end
+
+		themeSection:SetTitle(self:T("Appearance"))
+		themeLabel:UpdateLabel(self:T("ThemeLabel"))
+		transparencySlider:UpdateSlider(self:T("Transparency"))
+		appearanceNote:UpdateNote(self:T("AppearanceNote"))
+
+		-- La sélection affichée doit suivre la langue courante, sinon un appel
+		-- direct à SetLanguage laisse le menu sur l'ancien libellé.
+		local currentLabel
+		for label, code in pairs(LANGUAGE_CHOICES) do
+			if code == self.Language then
+				currentLabel = label
+				break
+			end
+		end
+		languageDropdown:UpdateDropdown(self:T("Language"), nil, currentLabel)
+
+		scriptSection:SetTitle(self:T("Script"))
+		unloadBtn:UpdateButton(self:T("Unload"))
+		unloadNote:UpdateNote(self:T("UnloadNote"))
+	end)
 
 	self._settingsTab = tab
 end
