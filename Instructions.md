@@ -211,7 +211,7 @@ Changeables via `Hub:SetTheme(nom)` ou depuis l'onglet **Réglages → Interface
 
 ## Transparence
 
-Un curseur à cinq crans (0 / 15 / 30 / 45 / 60 %) règle la transparence globale.
+Un curseur à crans de 5 % (de 0 à 60 %) règle la transparence globale.
 
 ```lua
 Hub:SetTransparency(0.3)   -- 0 = opaque, 1 = invisible
@@ -228,10 +228,15 @@ pas `☰ ✕ ▾ ✓` et les remplacerait par des carrés vides.
 
 ## Animations
 
-Changer d'onglet fait glisser la page depuis la droite en descendant dans la
-sidebar, depuis la gauche en remontant (0,16 s). À la fermeture par la croix, le
-rond flottant émet des ondes et affiche une bulle d'aide, pour signaler que
-c'est lui qui rouvre le panneau.
+- **Ouverture du panneau** : fondu de 0,18 s. Repose sur un `CanvasGroup`, qui
+  estompe le panneau et tout son contenu d'un bloc. Sur un client trop ancien
+  pour cette classe, le panneau apparaît sans fondu.
+- **Changement d'onglet** : la page glisse depuis la droite en descendant dans
+  la sidebar, depuis la gauche en remontant (0,16 s). Le repère d'onglet se
+  déplie.
+- **Dropdowns** : la liste se déplie en hauteur, le chevron pivote.
+- **Fermeture par la croix** : le rond flottant émet des ondes et affiche une
+  bulle d'aide, pour signaler que c'est lui qui rouvre le panneau.
 
 `Animations = false` à la création désactive l'ensemble.
 
@@ -239,6 +244,7 @@ c'est lui qui rouvre le panneau.
 
 | Version | Changement |
 | --- | --- |
+| 2.4.0 | Fondu à l'ouverture, dropdowns animés, transparence par pas de 5 % |
 | 2.3.0 | Icônes dessinées, transparence globale, animations, langue FR/EN |
 | 2.2.0 | Dropdowns acceptant les dictionnaires |
 | 2.1.0 | Dropdowns à choix multiple |

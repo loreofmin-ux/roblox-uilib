@@ -65,6 +65,9 @@ local THEMES = {
 		AccentText = Color3.fromRGB(255, 255, 255),
 		Text = Color3.fromRGB(232, 233, 240),
 		SubText = Color3.fromRGB(138, 141, 153),
+		-- Pastille du sélecteur : pour Dark et Light on montre le fond plutôt
+		-- que l'accent, l'aperçu est plus parlant que la couleur d'accentuation.
+		Swatch = Color3.fromRGB(18, 18, 22),
 	},
 	Light = {
 		Background = Color3.fromRGB(244, 245, 248),
@@ -77,6 +80,7 @@ local THEMES = {
 		AccentText = Color3.fromRGB(255, 255, 255),
 		Text = Color3.fromRGB(26, 28, 34),
 		SubText = Color3.fromRGB(108, 112, 124),
+		Swatch = Color3.fromRGB(252, 252, 254),
 	},
 	Blue = {
 		Background = Color3.fromRGB(9, 13, 19),
@@ -399,7 +403,7 @@ end
 
 local UILib = {}
 UILib.__index = UILib
-UILib.Version = "2.3.0"
+UILib.Version = "2.4.0"
 UILib.Themes = THEMES
 UILib.ThemeOrder = THEME_ORDER
 
@@ -678,7 +682,17 @@ function UILib.new(options, legacyTheme)
 	local viewport = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1280, 720)
 	local PANEL_W = math.min(options.Width or 940, math.max(viewport.X - 60, 480))
 	local PANEL_H = math.min(options.Height or 580, math.max(viewport.Y - 60, 320))
-	local panel = new("Frame", {
+	-- CanvasGroup permet d'estomper le panneau et tout son contenu d'un bloc.
+	-- Sur un client trop ancien pour cette classe, on retombe sur un Frame et
+	-- le panneau apparaît sans fondu.
+	local panelClass = "Frame"
+	if pcall(function()
+		Instance.new("CanvasGroup"):Destroy()
+	end) then
+		panelClass = "CanvasGroup"
+	end
+
+	local panel = new(panelClass, {
 		Name = "Panel",
 		Size = UDim2.fromOffset(PANEL_W, PANEL_H),
 		Position = UDim2.new(0.5, -PANEL_W / 2, 0.5, -PANEL_H / 2),
@@ -809,11 +823,54 @@ function UILib.new(options, legacyTheme)
 	----------------------------------------------------------
 	-- Interactions fenêtre
 	----------------------------------------------------------
+	-- Déclarés ici car utilisés plus bas dans les gestionnaires de clic, alors
+	-- qu'ils ne sont définis qu'à la section suivante : sans cette déclaration
+	-- anticipée, les fermetures captureraient un global nil.
+	local hideHint
+
+	local canFade = panel:IsA("CanvasGroup")
+	local panelOpen = false
+
+	local function setPanelOpen(open)
+		panelOpen = open
+
+		if not (self.Animations and canFade) then
+			-- Remise à zéro explicite : sans fondu, un panneau resté à
+			-- GroupTransparency = 1 s'afficherait invisible.
+			if canFade then
+				panel.GroupTransparency = 0
+			end
+			panel.Visible = open
+			return
+		end
+
+		if open then
+			panel.GroupTransparency = 1
+			panel.Visible = true
+			TweenService:Create(panel, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				GroupTransparency = 0,
+			}):Play()
+		else
+			local tween = TweenService:Create(panel, TweenInfo.new(0.14, Enum.EasingStyle.Quad), {
+				GroupTransparency = 1,
+			})
+			-- On ne masque qu'à la fin, et seulement si le panneau n'a pas été
+			-- rouvert entre-temps.
+			tween.Completed:Connect(function()
+				if not panelOpen then
+					panel.Visible = false
+				end
+			end)
+			tween:Play()
+		end
+	end
+	self.SetPanelOpen = setPanelOpen
+
 	local isDragged = makeDraggable(hubIcon, hubIcon, self.Connections)
 	hubIcon.InputEnded:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 			if not isDragged() then
-				panel.Visible = not panel.Visible
+				setPanelOpen(not panelOpen)
 				-- Le message a rempli son office dès que l'utilisateur clique.
 				hideHint()
 			end
@@ -915,13 +972,13 @@ function UILib.new(options, legacyTheme)
 		end)
 	end
 
-	local function hideHint()
+	function hideHint()
 		hintToken = hintToken + 1
 		hint.Visible = false
 	end
 
 	closeBtn.MouseButton1Click:Connect(function()
-		panel.Visible = false
+		setPanelOpen(false)
 		callAttention()
 	end)
 
@@ -1902,15 +1959,18 @@ function Section:AddDropdown(text, options, default, callback, opts)
 	})
 	local arrowIcon, arrowBars = makeChevron(arrow, 8, 2)
 
+	-- Pas d'AutomaticSize ici : la hauteur est animée à l'ouverture, et
+	-- AbsoluteContentSize du layout donne la hauteur naturelle à viser.
+	local LIST_PADDING = 8
 	local list = new("Frame", {
 		Size = UDim2.new(1, 0, 0, 0),
-		AutomaticSize = Enum.AutomaticSize.Y,
+		ClipsDescendants = true,
 		Visible = false,
 		LayoutOrder = 1,
 		Parent = holder,
 	})
 	corner(list, 6)
-	new("UIListLayout", {
+	local listLayout = new("UIListLayout", {
 		Padding = UDim.new(0, 2),
 		SortOrder = Enum.SortOrder.LayoutOrder,
 		Parent = list,
@@ -1922,6 +1982,40 @@ function Section:AddDropdown(text, options, default, callback, opts)
 		PaddingRight = UDim.new(0, 4),
 		Parent = list,
 	})
+
+	local listTween
+	local function setListOpen(open)
+		if listTween then
+			listTween:Cancel()
+			listTween = nil
+		end
+
+		local target = open and (listLayout.AbsoluteContentSize.Y + LIST_PADDING) or 0
+
+		if not hub.Animations then
+			list.Visible = open
+			list.Size = UDim2.new(1, 0, 0, target)
+			return
+		end
+
+		if open then
+			list.Visible = true
+		end
+
+		listTween = TweenService:Create(list, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			Size = UDim2.new(1, 0, 0, target),
+		})
+		if not open then
+			-- On ne masque qu'une fois repliée, sans quoi la liste disparaîtrait
+			-- avant la fin de l'animation.
+			listTween.Completed:Connect(function()
+				if not expanded then
+					list.Visible = false
+				end
+			end)
+		end
+		listTween:Play()
+	end
 
 	hub:OnTheme(function(theme)
 		header.BackgroundColor3 = theme.Element
@@ -2143,8 +2237,10 @@ function Section:AddDropdown(text, options, default, callback, opts)
 				else
 					select(option, true)
 					expanded = false
-					list.Visible = false
-					arrowIcon.Rotation = 0
+					setListOpen(false)
+					TweenService:Create(arrowIcon, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+						Rotation = 0,
+					}):Play()
 				end
 			end)
 
@@ -2152,6 +2248,12 @@ function Section:AddDropdown(text, options, default, callback, opts)
 		end
 
 		refreshOptionStyles()
+
+		-- La liste a changé de contenu : si elle est déployée, sa hauteur doit
+		-- être recalculée sur les nouvelles options.
+		if expanded then
+			setListOpen(true)
+		end
 
 		if multi then
 			-- On retire les sélections absentes de la nouvelle liste, sans rien
@@ -2204,9 +2306,11 @@ function Section:AddDropdown(text, options, default, callback, opts)
 
 	header.MouseButton1Click:Connect(function()
 		expanded = not expanded
-		list.Visible = expanded
+		setListOpen(expanded)
 		-- Le chevron pointe vers le bas ; on le retourne quand la liste s'ouvre.
-		arrowIcon.Rotation = expanded and 180 or 0
+		TweenService:Create(arrowIcon, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			Rotation = expanded and 180 or 0,
+		}):Play()
 	end)
 
 	api:SetOptions(options or {})
@@ -2387,13 +2491,15 @@ function Section:AddThemePicker()
 	for _, name in ipairs(THEME_ORDER) do
 		local swatch = new("TextButton", {
 			Size = UDim2.fromOffset(30, 30),
-			BackgroundColor3 = THEMES[name].Accent,
+			BackgroundColor3 = THEMES[name].Swatch or THEMES[name].Accent,
 			Text = "",
 			AutoButtonColor = false,
 			Parent = row,
 		})
 		corner(swatch, 15)
-		strokes[name] = stroke(swatch, nil, 0)
+		-- Contour permanent : sans lui, la pastille noire disparaîtrait sur un
+		-- thème sombre et la blanche sur un thème clair.
+		strokes[name] = stroke(swatch, nil, 1)
 		swatch.MouseButton1Click:Connect(function()
 			hub:SetTheme(name)
 		end)
@@ -2401,8 +2507,9 @@ function Section:AddThemePicker()
 
 	hub:OnTheme(function(theme)
 		for name, s in pairs(strokes) do
-			s.Thickness = (name == hub.ThemeName) and 2 or 0
-			s.Color = theme.Text
+			local active = name == hub.ThemeName
+			s.Thickness = active and 2 or 1
+			s.Color = active and theme.Text or theme.SubText
 		end
 	end)
 
@@ -2456,9 +2563,12 @@ function UILib:_BuildSettingsTab()
 	local themeLabel = themeSection:AddLabel(self:T("ThemeLabel"))
 	themeSection:AddThemePicker()
 
-	-- Slider d'index : 5 crans francs plutôt qu'un réglage continu, pour qu'on
-	-- retombe toujours sur le même rendu.
-	local STEPS = { 0, 0.15, 0.3, 0.45, 0.6 }
+	-- Slider d'index : des crans francs de 5 % plutôt qu'un réglage continu,
+	-- pour qu'on retombe toujours sur le même rendu.
+	local STEPS = {}
+	for percent = 0, 60, 5 do
+		table.insert(STEPS, percent / 100)
+	end
 	local function formatTransparency(index)
 		return math.floor((STEPS[index] or 0) * 100 + 0.5) .. " %"
 	end
