@@ -307,6 +307,7 @@ pas `☰ ✕ ▾ ✓` et les remplacerait par des carrés vides.
 
 | Version | Changement |
 | --- | --- |
+| 2.8.1 | Angle de la sidebar arrondi |
 | 2.8.0 | Quatre thèmes à dégradé fixe, angles plus doux, fond dégradé éclairci |
 | 2.7.2 | Le fond RGB traverse la sidebar, dégradé de fond resserré sur des teintes voisines |
 | 2.7.1 | Dégradés visibles (base blanche), fond RGB adouci, retour au clic sur les boutons de la barre |

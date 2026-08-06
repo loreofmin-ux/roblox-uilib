@@ -548,7 +548,7 @@ end
 
 local UILib = {}
 UILib.__index = UILib
-UILib.Version = "2.8.0"
+UILib.Version = "2.8.1"
 UILib.Themes = THEMES
 UILib.ThemeOrder = THEME_ORDER
 
@@ -1092,6 +1092,9 @@ function UILib.new(options, legacyTheme)
 		AutomaticCanvasSize = Enum.AutomaticSize.Y,
 		Parent = panel,
 	})
+	-- ClipsDescendants du panneau clippe sur un rectangle, pas sur l'arrondi :
+	-- sans coin propre, la sidebar gardait un angle vif bien visible.
+	corner(sidebar, 12)
 	new("UIListLayout", {
 		Padding = UDim.new(0, 2),
 		SortOrder = Enum.SortOrder.LayoutOrder,
