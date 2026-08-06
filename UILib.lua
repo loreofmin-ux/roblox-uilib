@@ -50,6 +50,9 @@ local playerGui = player:WaitForChild("PlayerGui")
 local FONT = Enum.Font.Gotham
 local FONT_BOLD = Enum.Font.GothamBold
 
+-- Largeur de la sidebar, partagée entre sa création et son repli.
+local SIDEBAR_W = 168
+
 --==============================================================
 -- Thèmes
 --==============================================================
@@ -133,25 +136,57 @@ local THEMES = {
 		Text = Color3.fromRGB(236, 236, 243),
 		SubText = Color3.fromRGB(140, 140, 156),
 		Swatch = Color3.fromRGB(255, 255, 255),
-		Rainbow = true,
+		Rainbow = "Accent",
+	},
+	-- Même palette, mais c'est le fond du panneau qui prend le dégradé : les
+	-- cartes restent sombres et flottent dessus.
+	RGBFond = {
+		-- Recouvert par la couche dégradée ; sert de repli si elle est absente.
+		Background = Color3.fromRGB(12, 12, 16),
+		Sidebar = Color3.fromRGB(14, 14, 19),
+		Card = Color3.fromRGB(18, 18, 24),
+		Element = Color3.fromRGB(31, 31, 39),
+		ElementHover = Color3.fromRGB(44, 44, 55),
+		Stroke = Color3.fromRGB(36, 36, 46),
+		Accent = Color3.fromRGB(190, 110, 245),
+		AccentText = Color3.fromRGB(255, 255, 255),
+		Text = Color3.fromRGB(236, 236, 243),
+		SubText = Color3.fromRGB(140, 140, 156),
+		Swatch = Color3.fromRGB(255, 255, 255),
+		Rainbow = "Background",
 	},
 }
 
-local THEME_ORDER = { "Dark", "Light", "Blue", "Green", "Yellow", "RGB" }
+local THEME_ORDER = { "Dark", "Light", "Blue", "Green", "Yellow", "RGB", "RGBFond" }
 
--- Dégradé du thème RGB, réutilisé par le panneau, le rond et la pastille.
-local RAINBOW = ColorSequence.new({
-	ColorSequenceKeypoint.new(0.00, Color3.fromRGB(255, 64, 64)),
-	ColorSequenceKeypoint.new(0.17, Color3.fromRGB(255, 200, 64)),
-	ColorSequenceKeypoint.new(0.34, Color3.fromRGB(80, 230, 120)),
-	ColorSequenceKeypoint.new(0.50, Color3.fromRGB(64, 220, 230)),
-	ColorSequenceKeypoint.new(0.67, Color3.fromRGB(90, 130, 255)),
-	ColorSequenceKeypoint.new(0.84, Color3.fromRGB(210, 90, 255)),
-	ColorSequenceKeypoint.new(1.00, Color3.fromRGB(255, 64, 64)),
-})
+-- Cycle de teintes précalculé.
+--
+-- Faire défiler l'Offset d'un dégradé fixe fait stagner la couleur aux
+-- extrémités — d'où le rouge qui s'attardait — et provoque un saut au bouclage.
+-- On fait donc tourner les teintes elles-mêmes : chaque étape est un dégradé
+-- complet décalé sur la roue chromatique, et la boucle se referme sans rupture.
+local RAINBOW_STEPS = 180
+local RAINBOW_FRAMES = {}
+do
+	local KEYPOINTS = 7
+	-- 0,85 tour plutôt qu'un tour complet : les deux extrémités du dégradé ne
+	-- retombent pas sur la même teinte, ce qui évite un aplat de couleur.
+	local SPAN = 0.85
+	for step = 0, RAINBOW_STEPS - 1 do
+		local shift = step / RAINBOW_STEPS
+		local points = {}
+		for i = 0, KEYPOINTS - 1 do
+			local t = i / (KEYPOINTS - 1)
+			points[i + 1] = ColorSequenceKeypoint.new(t, Color3.fromHSV((t * SPAN + shift) % 1, 0.72, 1))
+		end
+		RAINBOW_FRAMES[step + 1] = ColorSequence.new(points)
+	end
+end
+
+local RAINBOW = RAINBOW_FRAMES[1]
 
 -- Durée d'un cycle complet du dégradé, en secondes.
-local RGB_PERIOD = 9
+local RGB_PERIOD = 12
 
 --==============================================================
 -- Traductions
@@ -445,7 +480,7 @@ end
 
 local UILib = {}
 UILib.__index = UILib
-UILib.Version = "2.6.1"
+UILib.Version = "2.7.0"
 UILib.Themes = THEMES
 UILib.ThemeOrder = THEME_ORDER
 
@@ -489,6 +524,38 @@ function UILib:SetLanguage(code)
 	self.Language = code
 	for _, fn in ipairs(self.LanguageListeners) do
 		fn(code)
+	end
+end
+
+--------------------------------------------------------------
+-- Dégradés RGB
+--------------------------------------------------------------
+
+-- Attache un dégradé à un élément d'accent. `when` permet de ne l'activer que
+-- dans certains états (un interrupteur ne doit briller que s'il est allumé).
+-- `mode` indique le thème concerné : "Accent" par défaut, "Background" pour le
+-- voile de fond.
+function UILib:_AccentGradient(instance, when, mode)
+	local gradient = new("UIGradient", {
+		Color = RAINBOW,
+		Rotation = 45, -- la diagonale
+		Enabled = false,
+		Parent = instance,
+	})
+	table.insert(self.AccentGradients, {
+		Gradient = gradient,
+		When = when,
+		Mode = mode or "Accent",
+	})
+	self:_RefreshAccentGradients()
+	return gradient
+end
+
+function UILib:_RefreshAccentGradients()
+	local mode = self.Theme and self.Theme.Rainbow or nil
+	for _, entry in ipairs(self.AccentGradients) do
+		entry.Gradient.Enabled = (mode == entry.Mode)
+			and (entry.When == nil or entry.When() == true)
 	end
 end
 
@@ -546,6 +613,7 @@ function UILib:SetTheme(name)
 	for _, fn in ipairs(self.ThemeListeners) do
 		fn(theme)
 	end
+	self:_RefreshAccentGradients()
 	-- Les écouteurs de thème réécrivent des couleurs, jamais la transparence :
 	-- on la réapplique après coup pour qu'elle ne soit pas perdue.
 	self:_ApplyTransparency()
@@ -671,6 +739,7 @@ function UILib.new(options, legacyTheme)
 	self.Connections = {}
 	self.UnloadCallbacks = {}
 	self.Transparency = 0
+	self.AccentGradients = {}
 	self.Language = LOCALES[options.Language] and options.Language or "fr"
 	self.LanguageListeners = {}
 	-- Clés faibles : les éléments éphémères (ondes du rappel visuel) ne doivent
@@ -722,8 +791,8 @@ function UILib.new(options, legacyTheme)
 	-- Taille du panneau, bornée à l'écran : sur une petite résolution, un
 	-- panneau plus grand que la fenêtre serait pire que des cartes serrées.
 	local viewport = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1280, 720)
-	local PANEL_W = math.min(options.Width or 940, math.max(viewport.X - 60, 480))
-	local PANEL_H = math.min(options.Height or 580, math.max(viewport.Y - 60, 320))
+	local PANEL_W = math.min(options.Width or 1010, math.max(viewport.X - 60, 480))
+	local PANEL_H = math.min(options.Height or 600, math.max(viewport.Y - 60, 320))
 	local panel = new(surfaceClass(), {
 		Name = "Panel",
 		Size = UDim2.fromOffset(PANEL_W, PANEL_H),
@@ -747,58 +816,69 @@ function UILib.new(options, legacyTheme)
 	-- centaines d'écouteurs de thème). On superpose donc un voile dégradé :
 	-- deux instances à faire évoluer, et rien à recalculer ailleurs.
 	----------------------------------------------------------
-	-- Le voile passe AU-DESSUS du contenu. Placé derrière, il n'apparaissait que
-	-- dans les espaces entre les cartes opaques, ce qui découpait le dégradé en
-	-- rectangles au lieu d'une diagonale continue.
-	-- Active reste false : un Frame inactif ne capte pas les clics, les boutons
-	-- en dessous restent donc utilisables.
-	local rgbLayer = new("Frame", {
-		Name = "RGBLayer",
+	----------------------------------------------------------
+	-- Thème RGB
+	--
+	-- Le dégradé ne s'applique qu'aux éléments d'accent : le fond reste noir.
+	-- Un voile sur toute la surface teintait le texte et les cartes, ce qui
+	-- rendait l'ensemble sale.
+	----------------------------------------------------------
+	self:_AccentGradient(hubIcon, nil, "Accent")
+	self:_AccentGradient(panelStroke, nil, "Accent")
+
+	-- Thème « RGB Fond » : couche dédiée derrière tout le contenu.
+	-- Le dégradé ne peut pas être posé sur le panneau lui-même : c'est un
+	-- CanvasGroup, un UIGradient y teinterait aussi les cartes et le texte.
+	local bgLayer = new("Frame", {
+		Name = "RGBBackground",
 		Size = UDim2.fromScale(1, 1),
 		BackgroundColor3 = Color3.fromRGB(255, 255, 255),
-		BackgroundTransparency = 0.88,
 		BorderSizePixel = 0,
 		Active = false,
-		ZIndex = 100,
+		ZIndex = 0,
 		Visible = false,
 		Parent = panel,
 	})
-	corner(rgbLayer, 10)
-	local rgbGradient = new("UIGradient", {
-		Color = RAINBOW,
-		Rotation = 45, -- la diagonale
-		Parent = rgbLayer,
-	})
+	corner(bgLayer, 10)
+	self:_AccentGradient(bgLayer, nil, "Background")
 
-	local hubGradient = new("UIGradient", {
-		Color = RAINBOW,
-		Rotation = 45,
-		Enabled = false,
-		Parent = hubIcon,
-	})
+	self:OnTheme(function(theme)
+		bgLayer.Visible = theme.Rainbow == "Background"
+	end)
 
 	local rgbConn
-	local function setRainbowActive(active)
-		rgbLayer.Visible = active
-		hubGradient.Enabled = active
+	local lastStep = -1
 
+	local function setRainbowActive(active)
 		if active and not rgbConn then
 			rgbConn = RunService.RenderStepped:Connect(function()
 				local phase = (os.clock() % RGB_PERIOD) / RGB_PERIOD
-				local offset = Vector2.new(phase * 2 - 1, 0)
-				rgbGradient.Offset = offset
-				hubGradient.Offset = offset
+				local step = math.floor(phase * RAINBOW_STEPS) % RAINBOW_STEPS
+				-- Une seule écriture par palier : inutile de réassigner la même
+				-- séquence à chaque image.
+				if step == lastStep then
+					return
+				end
+				lastStep = step
+
+				local sequence = RAINBOW_FRAMES[step + 1]
+				for _, entry in ipairs(self.AccentGradients) do
+					if entry.Gradient.Enabled then
+						entry.Gradient.Color = sequence
+					end
+				end
 			end)
 			table.insert(self.Connections, rgbConn)
 		elseif not active and rgbConn then
-			-- Rien à animer hors du thème RGB : on libère la boucle par image.
+			-- Rien à animer hors des thèmes RGB : on libère la boucle par image.
 			rgbConn:Disconnect()
 			rgbConn = nil
+			lastStep = -1
 		end
 	end
 
 	self:OnTheme(function(theme)
-		setRainbowActive(theme.Rainbow == true and self.Animations)
+		setRainbowActive(theme.Rainbow ~= nil and self.Animations)
 	end)
 
 	-- Barre du haut
@@ -877,7 +957,7 @@ function UILib.new(options, legacyTheme)
 	-- Sidebar
 	local sidebar = new("ScrollingFrame", {
 		Name = "Sidebar",
-		Size = UDim2.new(0, 168, 1, -44),
+		Size = UDim2.new(0, SIDEBAR_W, 1, -44),
 		Position = UDim2.fromOffset(0, 44),
 		BorderSizePixel = 0,
 		ScrollBarThickness = 3,
@@ -905,8 +985,8 @@ function UILib.new(options, legacyTheme)
 
 	local content = new("Frame", {
 		Name = "Content",
-		Size = UDim2.new(1, -168, 1, -44),
-		Position = UDim2.fromOffset(168, 44),
+		Size = UDim2.new(1, -SIDEBAR_W, 1, -44),
+		Position = UDim2.fromOffset(SIDEBAR_W, 44),
 		BackgroundTransparency = 1,
 		ClipsDescendants = true,
 		Parent = panel,
@@ -1147,14 +1227,46 @@ function UILib.new(options, legacyTheme)
 	local sidebarOpen = true
 	burger.MouseButton1Click:Connect(function()
 		sidebarOpen = not sidebarOpen
-		local w = sidebarOpen and 168 or 0
-		TweenService:Create(sidebar, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {
+		local w = sidebarOpen and SIDEBAR_W or 0
+
+		-- Quint sortante : départ franc puis arrivée douce. Plus vivant que le
+		-- glissement linéaire, sans allonger la durée ressentie.
+		local slide = TweenInfo.new(0.32, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+
+		TweenService:Create(sidebar, slide, {
 			Size = UDim2.new(0, w, 1, -44),
 		}):Play()
-		TweenService:Create(content, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {
+		TweenService:Create(content, slide, {
 			Size = UDim2.new(1, -w, 1, -44),
 			Position = UDim2.fromOffset(w, 44),
 		}):Play()
+
+		-- Le contenu de la sidebar s'efface pendant qu'elle se referme, au lieu
+		-- d'être tranché net par le bord.
+		for _, child in ipairs(sidebar:GetChildren()) do
+			if child:IsA("TextButton") then
+				local tabLabel = child:FindFirstChildWhichIsA("TextLabel")
+				if tabLabel then
+					TweenService:Create(tabLabel, TweenInfo.new(0.18), {
+						TextTransparency = sidebarOpen and 0 or 1,
+					}):Play()
+				end
+			elseif child:IsA("TextLabel") then
+				TweenService:Create(child, TweenInfo.new(0.18), {
+					TextTransparency = sidebarOpen and 0 or 1,
+				}):Play()
+			end
+		end
+
+		-- Les trois barres du bouton pivotent d'un quart de tour.
+		for index, bar in ipairs(burgerBars) do
+			TweenService:Create(bar, TweenInfo.new(0.32, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+				Rotation = sidebarOpen and 0 or 90,
+				Position = sidebarOpen
+					and UDim2.new(0.5, 0, 0.5, (index - 2) * 4)
+					or UDim2.new(0.5, (index - 2) * 4, 0.5, 0),
+			}):Play()
+		end
 	end)
 
 	self:_BuildSettingsTab()
@@ -1236,6 +1348,8 @@ function UILib:SelectTab(tab)
 	tab.Page.Visible = true
 	tab:_Refresh(self.Theme)
 	self.Selected = tab
+	-- Le repère d'onglet a changé de place : son dégradé doit suivre.
+	self:_RefreshAccentGradients()
 
 	-- La nouvelle page arrive du côté d'où l'on vient : descendre dans la
 	-- sidebar la fait glisser depuis la droite, remonter depuis la gauche.
@@ -1318,6 +1432,11 @@ function Tab.new(hub, name, order)
 	self.Marker = marker
 	self.Label = label
 
+	-- Le repère brille en RGB uniquement quand l'onglet est actif.
+	hub:_AccentGradient(marker, function()
+		return self.Page ~= nil and self.Page.Visible
+	end, "Accent")
+
 	-- Page
 	local page = new("ScrollingFrame", {
 		Name = name .. "Page",
@@ -1340,9 +1459,11 @@ function Tab.new(hub, name, order)
 	self.Page = page
 
 	-- Colonnes
+	-- -16 et non -6 : la barre de défilement se superpose au contenu, les cartes
+	-- venaient donc buter dessus au lieu de s'arrêter avant.
 	local columnsHolder = new("Frame", {
 		Name = "Columns",
-		Size = UDim2.new(1, -6, 0, 0),
+		Size = UDim2.new(1, -16, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		BackgroundTransparency = 1,
 		Parent = page,
@@ -1733,6 +1854,12 @@ function Section:AddToggle(text, default, callback, opts)
 	})
 	corner(knob, 6)
 
+	-- L'interrupteur ne prend le dégradé que lorsqu'il est allumé : appliqué à
+	-- l'état éteint, il teinterait le gris de couleurs parasites.
+	hub:_AccentGradient(switch, function()
+		return state
+	end, "Accent")
+
 	local function refresh(animate)
 		local theme = hub.Theme
 		local targetPos = state and UDim2.new(1, -15, 0.5, -6) or UDim2.new(0, 3, 0.5, -6)
@@ -1744,6 +1871,7 @@ function Section:AddToggle(text, default, callback, opts)
 			switch.BackgroundColor3 = targetColor
 			knob.Position = targetPos
 		end
+		hub:_RefreshAccentGradients()
 	end
 
 	hub:OnTheme(function(theme)
@@ -1857,6 +1985,8 @@ function Section:AddSlider(text, min, max, default, callback, opts)
 		Parent = track,
 	})
 	corner(fill, 3)
+
+	hub:_AccentGradient(fill, nil, "Accent")
 
 	hub:OnTheme(function(theme)
 		holder.BackgroundColor3 = theme.Element

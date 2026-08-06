@@ -209,20 +209,30 @@ la librairie a branché et détruit le `ScreenGui`. L'appel est idempotent.
 Six thèmes intégrés : `Dark`, `Light`, `Blue`, `Green`, `Yellow`, `RGB`.
 Changeables via `Hub:SetTheme(nom)` ou depuis l'onglet **Réglages → Interface**.
 
-### Le thème RGB
+### Les deux thèmes RGB
 
-Un voile dégradé arc-en-ciel traverse la diagonale du panneau et défile
-lentement (un cycle toutes les 9 secondes). Le rond flottant suit le même
-dégradé.
+Deux variantes, pour choisir l'intensité :
 
-Il est superposé plutôt que calculé : recolorer chaque élément à chaque image
-signifierait rejouer des centaines d'écouteurs de thème par seconde. Ici, deux
-`UIGradient` sont mis à jour, et la boucle par image n'est branchée que tant que
-le thème RGB est actif. `Animations = false` la désactive aussi.
+| Thème | Ce qui prend le dégradé |
+| --- | --- |
+| `RGB` | Les **accents** : bordure du panneau, rond flottant, repère d'onglet, interrupteurs allumés, barres de slider. Le fond reste noir. |
+| `RGBFond` | Le **fond** du panneau. Les cartes et la sidebar restent sombres et flottent dessus. |
 
-Le voile est posé **au-dessus** du contenu, avec `Active = false` pour laisser
-passer les clics. Placé derrière, il n'apparaissait que dans les espaces entre
-les cartes opaques et découpait le dégradé en rectangles.
+Le dégradé suit la diagonale et boucle en 12 secondes.
+
+**Pourquoi les teintes tournent au lieu de défiler.** Faire glisser l'`Offset`
+d'un dégradé fixe fait stagner la couleur aux extrémités — le rouge s'attardait
+plus d'une seconde — et provoque un saut visible au bouclage. La librairie
+précalcule donc 180 dégradés, chacun décalé sur la roue chromatique, et les
+enchaîne : le cycle est régulier et se referme sans rupture.
+
+Aucune couleur n'est recalculée par élément : chaque accent porte un
+`UIGradient` qu'on active ou non selon le thème. La boucle par image n'est
+branchée que tant qu'un thème RGB est actif, et `Animations = false` la coupe.
+
+Le fond RGB passe par une couche dédiée derrière le contenu. Il ne peut pas être
+posé sur le panneau lui-même : c'est un `CanvasGroup`, et un `UIGradient` y
+teinterait aussi les cartes et le texte.
 
 ## Champs de texte
 
@@ -274,6 +284,7 @@ pas `☰ ✕ ▾ ✓` et les remplacerait par des carrés vides.
 
 | Version | Changement |
 | --- | --- |
+| 2.7.0 | RGB sur les accents seulement + variante `RGBFond`, cycle de teintes régulier, panneau élargi, repli de sidebar animé |
 | 2.6.1 | Le voile RGB passe au-dessus du contenu : le dégradé n'est plus découpé |
 | 2.6.0 | Thème RGB animé, relâchement automatique du focus des champs de texte |
 | 2.5.1 | La bulle d'aide bascule à gauche du rond quand il est sur la moitié droite |
