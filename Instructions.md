@@ -228,9 +228,14 @@ pas `☰ ✕ ▾ ✓` et les remplacerait par des carrés vides.
 
 ## Animations
 
-- **Ouverture du panneau** : fondu de 0,18 s. Repose sur un `CanvasGroup`, qui
-  estompe le panneau et tout son contenu d'un bloc. Sur un client trop ancien
-  pour cette classe, le panneau apparaît sans fondu.
+- **Ouverture du panneau — entrée en cascade** : le cadre arrive en fondu
+  (0,16 s), puis les cartes de l'onglet affiché s'égrènent une à une, décalées
+  de 55 ms. Inspiré des interfaces Linear et Framer.
+
+  Repose sur des `CanvasGroup`, qui estompent un conteneur et tout son contenu
+  via une seule propriété. Les cartes sont **estompées et non glissées** : leur
+  position est imposée par le `UIListLayout` de la colonne, qui la réécrirait.
+  Sur un client trop ancien pour cette classe, le panneau apparaît d'un coup.
 - **Changement d'onglet** : la page glisse depuis la droite en descendant dans
   la sidebar, depuis la gauche en remontant (0,16 s). Le repère d'onglet se
   déplie.
@@ -244,6 +249,7 @@ pas `☰ ✕ ▾ ✓` et les remplacerait par des carrés vides.
 
 | Version | Changement |
 | --- | --- |
+| 2.5.0 | Entrée en cascade à l'ouverture du panneau |
 | 2.4.0 | Fondu à l'ouverture, dropdowns animés, transparence par pas de 5 % |
 | 2.3.0 | Icônes dessinées, transparence globale, animations, langue FR/EN |
 | 2.2.0 | Dropdowns acceptant les dictionnaires |

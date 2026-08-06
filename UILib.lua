@@ -249,6 +249,17 @@ local function new(class, props)
 	return inst
 end
 
+-- CanvasGroup permet d'estomper un conteneur et tout son contenu via une seule
+-- propriété. Absent des clients anciens : on retombe alors sur un Frame, qui
+-- n'est simplement pas estompable.
+local CANVAS_GROUP_OK = pcall(function()
+	Instance.new("CanvasGroup"):Destroy()
+end)
+
+local function surfaceClass()
+	return CANVAS_GROUP_OK and "CanvasGroup" or "Frame"
+end
+
 local function corner(parent, radius)
 	return new("UICorner", { CornerRadius = UDim.new(0, radius or 6), Parent = parent })
 end
@@ -403,7 +414,7 @@ end
 
 local UILib = {}
 UILib.__index = UILib
-UILib.Version = "2.4.0"
+UILib.Version = "2.5.0"
 UILib.Themes = THEMES
 UILib.ThemeOrder = THEME_ORDER
 
@@ -682,17 +693,7 @@ function UILib.new(options, legacyTheme)
 	local viewport = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1280, 720)
 	local PANEL_W = math.min(options.Width or 940, math.max(viewport.X - 60, 480))
 	local PANEL_H = math.min(options.Height or 580, math.max(viewport.Y - 60, 320))
-	-- CanvasGroup permet d'estomper le panneau et tout son contenu d'un bloc.
-	-- Sur un client trop ancien pour cette classe, on retombe sur un Frame et
-	-- le panneau apparaît sans fondu.
-	local panelClass = "Frame"
-	if pcall(function()
-		Instance.new("CanvasGroup"):Destroy()
-	end) then
-		panelClass = "CanvasGroup"
-	end
-
-	local panel = new(panelClass, {
+	local panel = new(surfaceClass(), {
 		Name = "Panel",
 		Size = UDim2.fromOffset(PANEL_W, PANEL_H),
 		Position = UDim2.new(0.5, -PANEL_W / 2, 0.5, -PANEL_H / 2),
@@ -831,6 +832,37 @@ function UILib.new(options, legacyTheme)
 	local canFade = panel:IsA("CanvasGroup")
 	local panelOpen = false
 
+	-- Entrée en cascade : le cadre arrive, puis les cartes de l'onglet affiché
+	-- s'égrènent. On estompe les cartes plutôt que de les faire glisser : leur
+	-- position est imposée par le UIListLayout de la colonne.
+	local CARD_STAGGER = 0.055
+	local function cascadeCards()
+		local tab = self.Selected
+		if not tab then
+			return
+		end
+		for index, section in ipairs(tab.Sections) do
+			local card = section.Card
+			if card and card:IsA("CanvasGroup") then
+				card.GroupTransparency = 1
+				task.delay(CARD_STAGGER * index, function()
+					if not card.Parent then
+						return
+					end
+					if not panelOpen then
+						-- Panneau refermé entre-temps : on rétablit sans animer,
+						-- pour ne jamais laisser une carte invisible.
+						card.GroupTransparency = 0
+						return
+					end
+					TweenService:Create(card, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+						GroupTransparency = 0,
+					}):Play()
+				end)
+			end
+		end
+	end
+
 	local function setPanelOpen(open)
 		panelOpen = open
 
@@ -847,9 +879,10 @@ function UILib.new(options, legacyTheme)
 		if open then
 			panel.GroupTransparency = 1
 			panel.Visible = true
-			TweenService:Create(panel, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			TweenService:Create(panel, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
 				GroupTransparency = 0,
 			}):Play()
+			cascadeCards()
 		else
 			local tween = TweenService:Create(panel, TweenInfo.new(0.14, Enum.EasingStyle.Quad), {
 				GroupTransparency = 1,
@@ -1293,7 +1326,9 @@ function Section.new(tab, name, parentColumn, opts)
 	self.Tab = tab
 	self.Name = name
 
-	local card = new("Frame", {
+	-- CanvasGroup : l'animation d'entrée estompe chaque carte via une seule
+	-- propriété, sans avoir à parcourir tous ses enfants.
+	local card = new(surfaceClass(), {
 		Name = name .. "Section",
 		Size = UDim2.new(1, 0, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
