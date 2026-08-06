@@ -159,7 +159,63 @@ local THEMES = {
 	},
 }
 
-local THEME_ORDER = { "Dark", "Light", "Blue", "Green", "Yellow", "RGB", "RGBFond" }
+-- Thèmes à dégradé fixe : même palette sombre, seuls l'accent et le dégradé
+-- de fond changent. Les combinaisons viennent de dégradés éprouvés du web.
+local function gradientTheme(accent, swatch, sequence)
+	return {
+		Background = Color3.fromRGB(12, 12, 16),
+		Sidebar = Color3.fromRGB(16, 16, 21),
+		Card = Color3.fromRGB(21, 21, 27),
+		Element = Color3.fromRGB(32, 32, 40),
+		ElementHover = Color3.fromRGB(45, 45, 56),
+		Stroke = Color3.fromRGB(37, 37, 47),
+		Accent = accent,
+		AccentText = Color3.fromRGB(255, 255, 255),
+		Text = Color3.fromRGB(236, 236, 243),
+		SubText = Color3.fromRGB(140, 140, 156),
+		Swatch = swatch,
+		Rainbow = "Background",
+		StaticGradient = sequence,
+	}
+end
+
+-- Coucher de soleil : orange vers rose framboise.
+THEMES.Sunset = gradientTheme(
+	Color3.fromRGB(255, 118, 92),
+	Color3.fromRGB(240, 80, 100),
+	ColorSequence.new(Color3.fromRGB(255, 81, 47), Color3.fromRGB(221, 36, 118))
+)
+
+-- Océan : bleu nuit vers turquoise.
+THEMES.Ocean = gradientTheme(
+	Color3.fromRGB(56, 190, 210),
+	Color3.fromRGB(38, 208, 206),
+	ColorSequence.new(Color3.fromRGB(26, 41, 128), Color3.fromRGB(38, 208, 206))
+)
+
+-- Cosmos : violet, rouge, ambre.
+THEMES.Cosmic = gradientTheme(
+	Color3.fromRGB(200, 110, 240),
+	Color3.fromRGB(160, 60, 200),
+	ColorSequence.new({
+		ColorSequenceKeypoint.new(0.0, Color3.fromRGB(131, 58, 180)),
+		ColorSequenceKeypoint.new(0.5, Color3.fromRGB(253, 29, 29)),
+		ColorSequenceKeypoint.new(1.0, Color3.fromRGB(252, 176, 69)),
+	})
+)
+
+-- Menthe : émeraude vers vert tilleul.
+THEMES.Mint = gradientTheme(
+	Color3.fromRGB(80, 210, 170),
+	Color3.fromRGB(0, 176, 155),
+	ColorSequence.new(Color3.fromRGB(0, 176, 155), Color3.fromRGB(150, 201, 61))
+)
+
+local THEME_ORDER = {
+	"Dark", "Light", "Blue", "Green", "Yellow",
+	"RGB", "RGBFond",
+	"Sunset", "Ocean", "Cosmic", "Mint",
+}
 
 -- Cycle de teintes précalculé.
 --
@@ -492,7 +548,7 @@ end
 
 local UILib = {}
 UILib.__index = UILib
-UILib.Version = "2.7.2"
+UILib.Version = "2.8.0"
 UILib.Themes = THEMES
 UILib.ThemeOrder = THEME_ORDER
 
@@ -564,10 +620,17 @@ function UILib:_AccentGradient(instance, when, mode)
 end
 
 function UILib:_RefreshAccentGradients()
-	local mode = self.Theme and self.Theme.Rainbow or nil
+	local theme = self.Theme
+	local mode = theme and theme.Rainbow or nil
+	local static = theme and theme.StaticGradient or nil
+
 	for _, entry in ipairs(self.AccentGradients) do
 		entry.Gradient.Enabled = (mode == entry.Mode)
 			and (entry.When == nil or entry.When() == true)
+		-- Dégradé fixe : posé une fois, aucune boucle ne viendra le réécrire.
+		if static and entry.Mode == "Background" and entry.Gradient.Enabled then
+			entry.Gradient.Color = static
+		end
 	end
 end
 
@@ -821,7 +884,7 @@ function UILib.new(options, legacyTheme)
 		ClipsDescendants = true,
 		Parent = screenGui,
 	})
-	corner(panel, 10)
+	corner(panel, 16)
 	local panelStroke = stroke(panel)
 	self:OnTheme(function(theme)
 		-- La bordure porte le dégradé en thème RGB : elle doit être blanche et
@@ -863,14 +926,14 @@ function UILib.new(options, legacyTheme)
 	local bgLayer = new("Frame", {
 		Name = "RGBBackground",
 		Size = UDim2.fromScale(1, 1),
-		BackgroundColor3 = Color3.fromRGB(58, 58, 72),
+		BackgroundColor3 = Color3.fromRGB(118, 118, 133),
 		BorderSizePixel = 0,
 		Active = false,
 		ZIndex = 0,
 		Visible = false,
 		Parent = panel,
 	})
-	corner(bgLayer, 10)
+	corner(bgLayer, 16)
 	self:_AccentGradient(bgLayer, nil, "Background")
 
 	self:OnTheme(function(theme)
@@ -910,7 +973,8 @@ function UILib.new(options, legacyTheme)
 	end
 
 	self:OnTheme(function(theme)
-		setRainbowActive(theme.Rainbow ~= nil and self.Animations)
+		-- Un dégradé fixe n'a rien à animer : pas de boucle par image.
+		setRainbowActive(theme.Rainbow ~= nil and theme.StaticGradient == nil and self.Animations)
 	end)
 
 	-- Barre du haut
@@ -1657,7 +1721,7 @@ function Section.new(tab, name, parentColumn, opts)
 		LayoutOrder = opts.Order or (#tab.Sections + 1),
 		Parent = parentColumn,
 	})
-	corner(card, 8)
+	corner(card, 11)
 	local cardStroke = stroke(card)
 	new("UIListLayout", {
 		Padding = UDim.new(0, 6),
@@ -2888,8 +2952,11 @@ function Section:AddThemePicker()
 			Parent = row,
 		})
 		corner(swatch, 15)
-		-- La pastille RGB montre le dégradé lui-même, pas une couleur unie.
-		if THEMES[name].Rainbow then
+		-- Les pastilles à dégradé montrent le dégradé lui-même, pas un aplat.
+		local themeData = THEMES[name]
+		if themeData.StaticGradient then
+			new("UIGradient", { Color = themeData.StaticGradient, Rotation = 45, Parent = swatch })
+		elseif themeData.Rainbow then
 			new("UIGradient", { Color = RAINBOW, Rotation = 45, Parent = swatch })
 		end
 		-- Contour permanent : sans lui, la pastille noire disparaîtrait sur un

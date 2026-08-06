@@ -206,7 +206,21 @@ la librairie a branché et détruit le `ScreenGui`. L'appel est idempotent.
 
 ## Thèmes
 
-Six thèmes intégrés : `Dark`, `Light`, `Blue`, `Green`, `Yellow`, `RGB`.
+Onze thèmes intégrés, en trois familles.
+
+**Unis** — `Dark`, `Light`, `Blue`, `Green`, `Yellow`.
+
+**Dégradé fixe** — un fond dégradé qui ne bouge pas. Combinaisons reprises de
+dégradés éprouvés du web :
+
+| Thème | Dégradé |
+| --- | --- |
+| `Sunset` | orange → rose framboise |
+| `Ocean` | bleu nuit → turquoise |
+| `Cosmic` | violet → rouge → ambre |
+| `Mint` | émeraude → vert tilleul |
+
+**Dégradé animé** — `RGB` et `RGBFond`, décrits plus bas.
 Changeables via `Hub:SetTheme(nom)` ou depuis l'onglet **Réglages → Interface**.
 
 ### Les deux thèmes RGB
@@ -293,6 +307,7 @@ pas `☰ ✕ ▾ ✓` et les remplacerait par des carrés vides.
 
 | Version | Changement |
 | --- | --- |
+| 2.8.0 | Quatre thèmes à dégradé fixe, angles plus doux, fond dégradé éclairci |
 | 2.7.2 | Le fond RGB traverse la sidebar, dégradé de fond resserré sur des teintes voisines |
 | 2.7.1 | Dégradés visibles (base blanche), fond RGB adouci, retour au clic sur les boutons de la barre |
 | 2.7.0 | RGB sur les accents seulement + variante `RGBFond`, cycle de teintes régulier, panneau élargi, repli de sidebar animé |
